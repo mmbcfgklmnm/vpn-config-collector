@@ -7,3 +7,4 @@ xray
 *.zip
 .env
 configs/failed.txt
+xray.exe

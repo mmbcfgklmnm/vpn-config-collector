@@ -111,24 +111,51 @@ async def refresh_cache(force: bool = False) -> None:
 
 # ─── کمکی ─────────────────────────────────────────────────
 
+def _local_timestamp() -> str:
+    """timestamp فایل آمار محلی؛ خالی یعنی نامعلوم."""
+    try:
+        with open(STATS_FILE, encoding="utf-8") as fh:
+            return str(json.load(fh).get("timestamp", ""))
+    except (OSError, ValueError):
+        return ""
+
+
 def load_configs() -> List[str]:
-    """فایل محلی اگه محتوا داشته باشه، وگرنه cache گیت‌هاب."""
+    """تازه‌ترین منبع برنده است، نه فایل محلی.
+
+    روی Railway فایل configs/valid.txt همان snapshot لحظه‌ی deploy است و
+    ساعت‌ها یا روزها کهنه می‌شود، ولی چون خالی نیست قبلاً همیشه برنده
+    می‌شد و refresh_cache عملاً بی‌مصرف بود؛ نتیجه‌اش این بود که ربات
+    کانفیگ مرده تحویل می‌داد در حالی که لینک subscription تازه بود.
+    timestamp ها ISO-8601 با همان offset هستند، پس مقایسه‌ی رشته‌ای درسته.
+    """
+    local: List[str] = []
     try:
         with open(VALID_FILE, encoding="utf-8") as fh:
             local = [line.strip() for line in fh if line.strip()]
-        if local:
-            return local
     except OSError:
         pass
-    return list(_configs_cache)
+
+    remote = list(_configs_cache)
+    if remote and str(_stats_cache.get("timestamp", "")) > _local_timestamp():
+        return remote
+    return local or remote
 
 
 def load_stats() -> dict:
+    """همان منطق load_configs: هرکدام تازه‌تر است."""
+    local: dict = {}
     try:
         with open(STATS_FILE, encoding="utf-8") as fh:
-            return json.load(fh)
+            local = json.load(fh)
     except (OSError, ValueError):
+        pass
+
+    if _stats_cache and str(_stats_cache.get("timestamp", "")) > str(
+        local.get("timestamp", "")
+    ):
         return dict(_stats_cache)
+    return local or dict(_stats_cache)
 
 
 def is_admin(uid: Optional[int]) -> bool:

@@ -121,10 +121,17 @@ MAX_TG_MSG_LEN          = 4096
 TG_SAFE_MSG_LEN         = 3800
 
 # ─── xray ──────────────────────────────────────────────────
-XRAY_PATH      = os.getenv("XRAY_BINARY_PATH", "./xray")
+# روی ویندوز باینری xray.exe است؛ بدون این، اجرای محلی لایه ۶ همیشه
+# «xray پیدا نشد» می‌داد.
+_XRAY_DEFAULT  = "./xray.exe" if os.name == "nt" else "./xray"
+XRAY_PATH      = os.getenv("XRAY_BINARY_PATH", _XRAY_DEFAULT)
 
 # ─── GitHub ────────────────────────────────────────────────
+# پیش‌فرض‌ها روی همین repo تنظیم شده‌اند. قبلاً خالی بودند و اگر روی
+# Railway ست نمی‌شدند، ربات نه می‌توانست valid.txt تازه را از گیت‌هاب
+# بخواند (پس snapshot زمان deploy را تحویل می‌داد) و نه لینک subscription
+# را نشان دهد.
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO  = os.getenv("GITHUB_REPO", "")
-REPO_URL     = os.getenv("REPO_URL", "")
+GITHUB_REPO  = os.getenv("GITHUB_REPO", "mmbcfgklmnm/vpn-config-collector")
+REPO_URL     = os.getenv("REPO_URL", f"https://github.com/{GITHUB_REPO}")
 SUB_URL      = f"{REPO_URL.replace('github.com','raw.githubusercontent.com')}/main/configs/valid.txt" if REPO_URL else ""

@@ -49,8 +49,8 @@ def _stub_layers(monkeypatch, http_result):
     monkeypatch.setattr(main, "http_test_batch", http)
 
 
-def test_untested_configs_are_kept_after_verified(monkeypatch):
-    """باگ: با سقف MAX_HTTP_TEST خروجی از ۱۸۰۰ به ۲۹۰ می‌افتاد."""
+def test_only_http_verified_configs_are_published(monkeypatch):
+    """تست‌نشده‌ها publish نمی‌شوند و فقط در آمار شمرده می‌شوند."""
     def http_result(candidates):
         # فقط اولی از دو کاندید تست‌شده پاس می‌شود، با تأخیر بالا
         return [(candidates[0], 900.0)], {"total": 2, "passed": 1, "failed": 1}
@@ -61,12 +61,9 @@ def test_untested_configs_are_kept_after_verified(monkeypatch):
 
     final, stats = asyncio.run(main.pipeline(CFGS))
 
-    # ۱ تأییدشده + ۲ تست‌نشده (کاندید دومی که HTTP نداد حذف می‌شود)
-    assert len(final) == 3
+    assert len(final) == 1
     assert stats["layer6_http"]["not_tested"] == 2
-    # تأییدشده اول است، هرچند تأخیرش بیشتر است
     assert vless.get_latency_ms(final[0]) == 900.0
-    assert [vless.get_latency_ms(c) for c in final[1:]] == [30.0, 40.0]
     assert vless.get_country(final[0]) == "US"
 
 

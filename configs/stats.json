@@ -1,0 +1,102 @@
+{
+  "timestamp": "2026-09-01T16:09:00+00:00",
+  "duration_seconds": 126.2,
+  "raw_collected": 3508,
+  "valid_configs": 1503,
+  "skip_xray": true,
+  "pipeline": {
+    "layer1_format": {
+      "total": 3508,
+      "valid": 2645,
+      "invalid": 863,
+      "top_reasons": {
+        "security نامعتبر: none": 757,
+        "security نامعتبر: ": 65,
+        "reality بدون pbk": 25,
+        "UUID نامعتبر: mahanvpn-mahanvpn": 4,
+        "UUID نامعتبر: 1lpxy6haqm": 2
+      }
+    },
+    "layer2_dedup": {
+      "total": 2645,
+      "unique": 2459,
+      "exact_dups": 0,
+      "norm_dups": 107,
+      "fp_dups": 79
+    },
+    "layer3_tcp": {
+      "total": 2459,
+      "connected": 1605,
+      "failed": 854,
+      "avg_latency_ms": 402.8
+    },
+    "layer4_tls": {
+      "total": 1605,
+      "passed": 1508,
+      "failed": 97,
+      "avg_tls_ms": 739.3
+    },
+    "layer5_geo": {
+      "total": 1508,
+      "passed": 1503,
+      "failed": 5,
+      "unknown_country": 0,
+      "countries": {
+        "US": 515,
+        "NL": 121,
+        "GB": 158,
+        "RU": 44,
+        "NO": 44,
+        "AE": 53,
+        "CH": 8,
+        "DE": 113,
+        "HK": 8,
+        "AQ": 1,
+        "CA": 10,
+        "JP": 69,
+        "AU": 23,
+        "FR": 19,
+        "SE": 13,
+        "AR": 26,
+        "FI": 52,
+        "SG": 66,
+        "EE": 11,
+        "GE": 4,
+        "KR": 10,
+        "IT": 15,
+        "IN": 6,
+        "ES": 10,
+        "TW": 14,
+        "BZ": 1,
+        "LT": 6,
+        "PL": 16,
+        "CZ": 3,
+        "LV": 5,
+        "HU": 2,
+        "TR": 4,
+        "RS": 13,
+        "BE": 2,
+        "KZ": 3,
+        "BG": 10,
+        "MD": 6,
+        "CW": 1,
+        "IL": 1,
+        "UA": 1,
+        "AT": 4,
+        "GR": 2,
+        "AL": 3,
+        "MY": 1,
+        "RO": 3,
+        "AM": 1,
+        "BR": 1,
+        "SK": 1
+      }
+    },
+    "layer6_http": {
+      "total": 1503,
+      "passed": 1503,
+      "skipped": true,
+      "avg_ms": 0
+    }
+  }
+}

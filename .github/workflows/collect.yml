@@ -1,0 +1,101 @@
+name: 🛡️ VPN Config Collector v2
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # هر ۱ ساعت
+  workflow_dispatch:
+    inputs:
+      skip_telegram:
+        description: "رد کردن ارسال تلگرام"
+        type: boolean
+        default: false
+      skip_xray:
+        description: "رد کردن تست xray"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vpn-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 📦 نصب وابستگی‌ها
+        run: pip install -r requirements.txt -q
+
+      # inputs.skip_xray روی اجرای زمان‌بندی‌شده خالیه، پس با fromJSON به
+      # false تبدیل میشه. از `|| 'true'` استفاده نمی‌کنیم چون در عبارت‌های
+      # گیت‌هاب مقدار false هم falsy حساب میشه و همیشه 'true' برمی‌گشت.
+      - name: ⬇️ دانلود xray-core
+        if: ${{ !fromJSON(inputs.skip_xray || 'false') }}
+        run: |
+          wget -q "https://github.com/XTLS/Xray-core/releases/download/v1.8.10/Xray-linux-64.zip"
+          unzip -q Xray-linux-64.zip xray
+          chmod +x xray
+          echo "✅ xray: $(./xray version | head -1)"
+
+      - name: 🚀 اجرای Collector
+        env:
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TELEGRAM_API_ID:     ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH:   ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION:    ${{ secrets.TELEGRAM_SESSION }}
+          GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO:         ${{ github.repository }}
+          REPO_URL:            https://github.com/${{ github.repository }}
+          XRAY_BINARY_PATH:    ./xray
+          SKIP_TELEGRAM:       ${{ inputs.skip_telegram && 'true' || 'false' }}
+          SKIP_XRAY:           ${{ inputs.skip_xray && 'true' || 'false' }}
+        run: python -m src.main
+
+      - name: 📝 آپدیت README
+        if: always()
+        run: python tools/update_readme.py
+
+      - name: 💾 Commit
+        if: always()
+        run: |
+          git config user.name  "VPN Bot"
+          git config user.email "bot@vpn.local"
+          git add configs/ README.md
+          if git diff --staged --quiet; then
+            echo "تغییری برای commit نیست"
+            exit 0
+          fi
+          git commit -m "♻️ آپدیت | $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # push با rebase و تلاش مجدد: اجراهای همزمان/صف‌شده نباید
+          # بی‌صدا آپدیت رو از دست بدن.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push && exit 0
+            echo "تلاش $i برای push ناموفق، تلاش مجدد..."
+            sleep $((i * 5))
+          done
+          echo "::error::push بعد از ۳ تلاش ناموفق بود"
+          exit 1
+
+      - name: 📊 خلاصه
+        if: always()
+        run: |
+          echo "## نتیجه" >> $GITHUB_STEP_SUMMARY
+          python tools/update_readme.py --summary >> $GITHUB_STEP_SUMMARY
+
+      - name: 🧹 پاکسازی
+        if: always()
+        run: rm -f xray Xray-linux-64.zip *.tmp 2>/dev/null || true

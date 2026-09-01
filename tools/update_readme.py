@@ -48,7 +48,7 @@ README_TEMPLATE = f"""# 🛡️ VPN Config Collector
 لینک subscription:
 
 ```
-https://raw.githubusercontent.com/<owner>/<repo>/main/configs/valid.txt
+https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/valid.txt
 ```
 
 - `configs/valid.txt` — کانفیگ‌هایی که همه لایه‌ها را پاس کرده‌اند

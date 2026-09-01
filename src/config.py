@@ -45,9 +45,10 @@ TLS_TIMEOUT_SEC     = _int_env("TLS_TIMEOUT_SEC", 5)
 MAX_CONCURRENT_TLS  = _int_env("MAX_CONCURRENT_TLS", 50)
 MAX_CONCURRENT_GEO  = _int_env("MAX_CONCURRENT_GEO", 20)
 
-# سقف ورودی لایه ۶. تست xray برای هر کانفیگ چند ثانیه طول می‌کشه و
-# job گیت‌هاب ۵۵ دقیقه سقف داره؛ فقط سریع‌ترین‌های لایه ۴ تست میشن.
-MAX_HTTP_TEST       = _int_env("MAX_HTTP_TEST", 400)
+# سقف ورودی لایه ۶ (فقط برای بستن زمان job؛ کانفیگ‌های تست‌نشده از خروجی
+# حذف نمی‌شوند و بعد از تأییدشده‌ها می‌آیند). اجرای ۱۸:۱۴ UTC با سقف ۴۰۰
+# کل pipeline را ۱۹۹s برد و سقف job ۵۵ دقیقه است، پس جا برای بیشتر هست.
+MAX_HTTP_TEST       = _int_env("MAX_HTTP_TEST", 1500)
 
 # سرور نباید در این کشورها باشه. RU و CN از پیش‌فرض حذف شدن چون
 # سرورهای سالم زیادی اونجا هست و over-filter می‌کرد.

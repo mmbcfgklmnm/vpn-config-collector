@@ -12,6 +12,11 @@ VPN Config Collector v2 - Pipeline ۶ لایه
   ۴. اگه pipeline صفر کانفیگ داد، valid.txt قبلی *پاک نمیشه* — لینک
      subscription کاربران با یک اجرای ناموفق از کار نمی‌افتد.
   ۵. آمار حتی در صورت خطا نوشته میشه تا README و خلاصه‌ی اجرا گویا باشند.
+  ۶. کانفیگ‌هایی که به‌خاطر سقف MAX_HTTP_TEST تست HTTP نشدند از خروجی
+     *حذف نمی‌شوند*؛ بعد از تأییدشده‌ها می‌آیند. قبلاً با فعال‌شدن لایه ۶
+     خروجی از ~۱۸۰۰ به ~۲۹۰ می‌افتاد چون ۱۴۲۵ کانفیگ سالم دور ریخته می‌شد.
+  ۷. فایل‌ها با newline="\\n" نوشته میشن؛ روی ویندوز خروجی CRLF می‌شد و
+     بعضی کلاینت‌ها لینک subscription را درست نمی‌خواندند.
 """
 import asyncio
 import json
@@ -45,7 +50,7 @@ logger = get_logger("main")
 
 def save(configs: List[str], path: str) -> None:
     os.makedirs(CONFIGS_DIR, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(configs) + ("\n" if configs else ""))
     logger.info(f"💾 {len(configs)} → {path}")
 
@@ -151,30 +156,40 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
             vless.add_tag(c, tls_ms_map.get(c, 0), country_map.get(c, ""))
             for c in configs
         ]
+        final.sort(key=vless.get_latency_ms)
     else:
         # xray سنگین‌ترین لایه است؛ سریع‌ترین‌ها را تا سقف MAX_HTTP_TEST
-        # تست می‌کنیم. بقیه تست‌نشده‌اند، پس در خروجی نهایی نمی‌آیند.
-        candidates = sorted(configs, key=lambda c: tls_ms_map.get(c, float("inf")))
-        dropped = max(0, len(candidates) - MAX_HTTP_TEST)
-        candidates = candidates[:MAX_HTTP_TEST]
-        if dropped:
+        # تست می‌کنیم. بقیه *حذف نمی‌شوند* — فقط تست‌نشده‌اند و بعد از
+        # تأییدشده‌ها می‌آیند. سقف برای کوتاه‌کردن زمان job است، نه برای
+        # کوچک‌کردن لینک subscription.
+        ordered = sorted(configs, key=lambda c: tls_ms_map.get(c, float("inf")))
+        candidates = ordered[:MAX_HTTP_TEST]
+        untested = ordered[MAX_HTTP_TEST:]
+        if untested:
             logger.info(
                 f"6️⃣  تست HTTP واقعی روی {len(candidates)} کانفیگ سریع‌تر "
-                f"({dropped} تست نشد — سقف MAX_HTTP_TEST)"
+                f"({len(untested)} تست نشد — سقف MAX_HTTP_TEST)"
             )
         else:
             logger.info("6️⃣  تست HTTP واقعی...")
 
         configs_ms, s6 = await http_test_batch(candidates)
-        s6["not_tested"] = dropped
+        s6["not_tested"] = len(untested)
         stats["layer6_http"] = s6
-        logger.info(f"   → {len(configs_ms)}\n")
-        final = [
+        logger.info(f"   → {len(configs_ms)} + {len(untested)} تست‌نشده\n")
+
+        # تأخیر HTTP با تأخیر TLS قابل‌مقایسه نیست، پس هر گروه جدا مرتب
+        # میشه و تأییدشده‌ها همیشه بالای فایل می‌مانند.
+        verified = [
             vless.add_tag(c, ms, country_map.get(c, "")) for c, ms in configs_ms
         ]
-
-    # سریع‌ترین‌ها اول
-    final.sort(key=vless.get_latency_ms)
+        verified.sort(key=vless.get_latency_ms)
+        rest = [
+            vless.add_tag(c, tls_ms_map.get(c, 0), country_map.get(c, ""))
+            for c in untested
+        ]
+        rest.sort(key=vless.get_latency_ms)
+        final = verified + rest
 
     logger.info(
         f"\n{'=' * 55}\n✅ Pipeline کامل\n"

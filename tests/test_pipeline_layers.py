@@ -4,6 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.tester import format_validator
 from src.tester.deduplicator import deduplicate, get_fingerprint, normalize
 from src.tester.format_validator import filter_by_format, validate_host, validate_vless
 
@@ -70,13 +71,62 @@ def test_filter_by_format_stats():
     configs = [cfg(), cfg(query="security=none"), "garbage"]
     valid, stats = filter_by_format(configs)
     assert len(valid) == 1
-    assert stats == {
-        "total": 3,
-        "valid": 1,
-        "invalid": 2,
-        "top_reasons": stats["top_reasons"],
-    }
+    assert set(stats) == {"total", "valid", "invalid", "cdn_plain", "top_reasons"}
+    assert (stats["total"], stats["valid"], stats["invalid"]) == (3, 1, 2)
+    assert stats["cdn_plain"] == 0
     assert sum(stats["top_reasons"].values()) == 2
+
+
+# ─── استثنای CDN-plain (لایه ۱) ───────────────────────────
+# چرا این استثنا هست: security=none تنها دلیلِ رد شدن ~۸۰۰ کانفیگ بود، در
+# حالی که همین دسته (IP کلادفلر + ws) بالاترین نرخ دسترسی از ایران را داشت.
+
+CF_IP = "104.17.5.5"
+
+
+def test_cdn_plain_ws_on_cf_ip_accepted():
+    ok, reason = validate_vless(
+        cfg(host=CF_IP, query="type=ws&security=none&path=%2Fws")
+    )
+    assert ok is True, reason
+
+
+def test_cdn_plain_needs_http_transport():
+    """روی همان IP کلادفلر ولی با transport tcp — الگوی CF نیست."""
+    assert validate_vless(
+        cfg(host=CF_IP, query="type=tcp&security=none")
+    )[0] is False
+
+
+def test_cdn_plain_rejects_raw_vps_ip():
+    """IP خام با ws هم رد می‌شود؛ استثنا فقط برای endpoint پشت CDN است."""
+    assert validate_vless(
+        cfg(host="1.2.3.4", query="type=ws&security=none&path=%2Fws")
+    )[0] is False
+
+
+def test_cdn_plain_domain_needs_standard_cf_port():
+    on_cf_port = cfg(host="a.example.com", port=8080,
+                     query="type=ws&security=none&path=%2Fws")
+    off_cf_port = cfg(host="a.example.com", port=12345,
+                      query="type=ws&security=none&path=%2Fws")
+    assert validate_vless(on_cf_port)[0] is True
+    assert validate_vless(off_cf_port)[0] is False
+
+
+def test_cdn_plain_counted_in_stats():
+    configs = [cfg(), cfg(host=CF_IP, query="type=ws&security=none&path=%2Fws")]
+    valid, stats = filter_by_format(configs)
+    assert len(valid) == 2
+    assert stats["cdn_plain"] == 1
+
+
+def test_cdn_plain_can_be_disabled(monkeypatch):
+    """با ALLOW_CDN_PLAIN=0 رفتار به نسخه‌ی سخت‌گیر قبلی برمی‌گردد."""
+    monkeypatch.setattr(format_validator, "ALLOW_CDN_PLAIN", False)
+    assert validate_vless(
+        cfg(host=CF_IP, query="type=ws&security=none&path=%2Fws")
+    )[0] is False
 
 
 # ─── لایه ۲ ───────────────────────────────────────────────

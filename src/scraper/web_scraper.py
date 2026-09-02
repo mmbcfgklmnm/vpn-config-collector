@@ -19,6 +19,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import vless
 from src.config import DIRECT_URLS, MAX_PER_SOURCE
+from src.health import record as record_health
 from src.logger import get_logger
 
 logger = get_logger("web_scraper")
@@ -43,13 +44,16 @@ async def fetch_url(session: aiohttp.ClientSession, url: str) -> List[str]:
         async with session.get(url, headers=HEADERS, allow_redirects=True) as resp:
             if resp.status != 200:
                 logger.warning(f"⚠️ HTTP {resp.status}: {url[:60]}")
+                record_health("web", url, 0, f"HTTP {resp.status}")
                 return []
             text = await resp.text(encoding="utf-8", errors="ignore")
     except Exception as exc:
         logger.debug(f"خطا {url[:40]}: {exc}")
+        record_health("web", url, 0, type(exc).__name__)
         return []
 
     found = extract_vless(text)
+    record_health("web", url, len(found))
     logger.info(f"🌐 {url[:60]}... → {len(found)} کانفیگ")
     return found
 

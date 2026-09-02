@@ -5,7 +5,8 @@
 
 قبلاً این منطق داخل یه heredoc در workflow بود و سه مشکل داشت:
   ۱. اگه README.md وجود نداشت با FileNotFoundError کرش می‌کرد و هر اجرا قرمز می‌شد.
-  ۲. کلید layer4_xray رو می‌خوند که هیچ‌وقت در stats نیست (اسم واقعی layer4_tls).
+  ۲. کلیدهای اشتباه لایه رو می‌خوند؛ حالا اسم‌ها با src/main.py یکی‌اند
+     (layer1_format … layer4_iran … layer7_http) و هر کلید نبود، خط تیره می‌شه.
   ۳. اگه نشانه‌های STATS_START/END در README نبودند بی‌صدا هیچ کاری نمی‌کرد.
 """
 from __future__ import annotations
@@ -35,8 +36,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 README_TEMPLATE = f"""# 🛡️ VPN Config Collector
 
-کانفیگ‌های VLESS جمع‌آوری‌شده از منابع عمومی که از یک pipeline شش‌لایه
-عبور کرده‌اند: فرمت → حذف تکراری → TCP → TLS → Geo → HTTP واقعی.
+کانفیگ‌های VLESS جمع‌آوری‌شده از منابع عمومی که از یک pipeline هفت‌لایه
+عبور کرده‌اند: فرمت → حذف تکراری → TCP → **دسترسی از ایران** → TLS → Geo →
+HTTP واقعی.
 
 ## آمار آخرین اجرا
 
@@ -52,6 +54,9 @@ https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/
 ```
 
 - `configs/valid.txt` — کانفیگ‌هایی که همه لایه‌ها را پاس کرده‌اند
+- `configs/iran.txt` — همان‌ها که از نودهای ایرانی check-host هم جواب دادند
+- `configs/sub_base64.txt` — نسخه‌ی Base64 برای کلاینت‌های قدیمی‌تر
+- `configs/index.json` — قرارداد ماشین‌خوان (مسیرها و آمار)
 - `configs/all.txt` — همه‌ی کانفیگ‌های خام جمع‌آوری‌شده
 - `configs/stats.json` — آمار کامل اجرا
 
@@ -62,7 +67,7 @@ pip install -r requirements.txt
 SKIP_TELEGRAM=true SKIP_XRAY=true python -m src.main
 ```
 
-برای اجرای لایه ۶ باینری xray لازم است و مسیرش با `XRAY_BINARY_PATH` تنظیم می‌شود.
+برای اجرای لایه ۷ باینری xray لازم است و مسیرش با `XRAY_BINARY_PATH` تنظیم می‌شود.
 """
 
 
@@ -82,6 +87,7 @@ def layer(stats: dict, name: str, key: str) -> object:
 
 def build_rows(stats: dict) -> str:
     ts = str(stats.get("timestamp", ""))[:19].replace("T", " ") or DASH
+    rounds = layer(stats, "layer7_http", "rounds")
     return "\n".join(
         [
             "| فیلد | مقدار |",
@@ -90,12 +96,14 @@ def build_rows(stats: dict) -> str:
             f"| مدت اجرا | {stats.get('duration_seconds', DASH)}s |",
             f"| جمع‌آوری | {stats.get('raw_collected', 0)} |",
             f"| ✅ معتبر | **{stats.get('valid_configs', 0)}** |",
+            f"| 🇮🇷 تأییدشده از ایران | **{stats.get('iran_verified', 0)}** |",
             f"| لایه ۱ فرمت | {layer(stats, 'layer1_format', 'valid')} |",
-            f"| لایه ۲ dedup | {layer(stats, 'layer2_dedup', 'unique')} |",
+            f"| لایه ۲ حذف تکراری | {layer(stats, 'layer2_dedup', 'unique')} |",
             f"| لایه ۳ TCP | {layer(stats, 'layer3_tcp', 'connected')} |",
-            f"| لایه ۴ TLS | {layer(stats, 'layer4_tls', 'passed')} |",
-            f"| لایه ۵ Geo | {layer(stats, 'layer5_geo', 'passed')} |",
-            f"| لایه ۶ HTTP | {layer(stats, 'layer6_http', 'passed')} |",
+            f"| لایه ۴ دسترسی از ایران | {layer(stats, 'layer4_iran', 'passed')} |",
+            f"| لایه ۵ TLS | {layer(stats, 'layer5_tls', 'passed')} |",
+            f"| لایه ۶ Geo | {layer(stats, 'layer6_geo', 'passed')} |",
+            f"| لایه ۷ HTTP ({rounds} دور) | {layer(stats, 'layer7_http', 'passed')} |",
         ]
     )
 

@@ -1,5 +1,5 @@
 """
-لایه ۶: تست HTTP واقعی از طریق xray
+لایه ۷: تست HTTP واقعی از طریق xray — چند دور، همه باید پاس شوند
 
 سه اشکال نسخه‌ی قبلی:
   ۱. پورت SOCKS با random.randint انتخاب می‌شد؛ با ۸ تست همزمان و ۱۰هزار
@@ -9,11 +9,20 @@
      پس «xray بالا نیامد» از «سرور جواب نداد» قابل تشخیص نبود.
   ۳. پارامترها percent-decode نمی‌شدند، پس path=%2Fws به‌صورت literal به xray
      می‌رسید و همه‌ی کانفیگ‌های WebSocket این‌جا رد می‌شدند.
+
+چرا چند دور (الگو از 0xRadikal/Free-v2ray-Configs)
+──────────────────────────────────────────────────
+یک تست موفق تضمین نمی‌کند کانفیگ ۵ دقیقه بعد هم کار کند. در اندازه‌گیری آن
+پروژه ~۳۰٪ کانفیگ‌هایی که یک بار جواب دادند در دور بعد fail شدند. این‌جا
+کانفیگ باید *همه‌ی* HTTP_TEST_ROUNDS دور را پاس کند و بین دورها
+HTTP_ROUND_GAP_SEC ثانیه فاصله است تا سه دور یک لحظه‌ی شبکه را نسنجند.
+تأخیر گزارش‌شده میانه‌ی دورهاست، نه بهترین دور — بهترین دور خوش‌بینانه است.
 """
 import asyncio
 import json
 import os
 import socket
+import statistics
 import tempfile
 import time
 from typing import List, Optional, Set, Tuple
@@ -24,7 +33,10 @@ from aiohttp_socks import ProxyConnector
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import vless
-from src.config import XRAY_PATH, MAX_CONCURRENT_XRAY, XRAY_TIMEOUT_SEC
+from src.config import (
+    HTTP_ROUND_GAP_SEC, HTTP_TEST_ROUNDS, MAX_CONCURRENT_XRAY,
+    XRAY_PATH, XRAY_TIMEOUT_SEC,
+)
 from src.logger import get_logger
 
 logger = get_logger("http_tester")
@@ -80,6 +92,9 @@ def vless_to_xray(config: str, socks_port: int) -> Optional[dict]:
     path = p.get("path", "/")
     host_header = p.get("host") or info.host
 
+    # xray نام "http" را نمی‌شناسد؛ معادلش "h2" است. "raw" نام جدید "tcp".
+    net = {"http": "h2", "raw": "tcp"}.get(net, net)
+
     stream: dict = {"network": net}
 
     if info.security == "reality":
@@ -103,12 +118,24 @@ def vless_to_xray(config: str, socks_port: int) -> Optional[dict]:
             stream["tlsSettings"]["alpn"] = [
                 a for a in p["alpn"].split(",") if a.strip()
             ]
+    else:
+        # CDN-plain: بدون لایه‌ی رمز. صریح می‌نویسیم تا از پیش‌فرض‌های
+        # نسخه‌های مختلف xray مستقل باشد.
+        stream["security"] = "none"
 
     if net == "ws":
         stream["wsSettings"] = {"path": path, "headers": {"Host": host_header}}
+    elif net == "httpupgrade":
+        # transport رایج در کانفیگ‌های CDN جدید؛ قبلاً پشتیبانی نمی‌شد و
+        # همه‌ی این کانفیگ‌ها با «تبدیل ناموفق» یا خطای xray رد می‌شدند.
+        stream["httpupgradeSettings"] = {"path": path, "host": host_header}
+    elif net == "xhttp":
+        stream["xhttpSettings"] = {"path": path, "host": host_header}
+        if p.get("mode"):
+            stream["xhttpSettings"]["mode"] = p["mode"]
     elif net == "grpc":
         stream["grpcSettings"] = {"serviceName": p.get("servicename", "")}
-    elif net in ("h2", "http"):
+    elif net == "h2":
         stream["httpSettings"] = {"host": [host_header], "path": path}
 
     return {
@@ -240,12 +267,12 @@ async def http_test_single(config: str) -> Tuple[bool, float, str]:
         await release_port(port)
 
 
-async def http_test_batch(
+async def _one_round(
     configs: List[str],
-) -> Tuple[List[Tuple[str, float]], dict]:
-    valid: List[Tuple[str, float]] = []
+) -> Tuple[List[Tuple[str, float]], int, dict]:
+    """یک دور تست → (موفق‌ها با تأخیر، تعداد fail، دلایل)."""
+    passed: List[Tuple[str, float]] = []
     failed = 0
-    latencies: List[float] = []
     reasons: dict = {}
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_XRAY)
 
@@ -253,7 +280,6 @@ async def http_test_batch(
         async with semaphore:
             return cfg, await http_test_single(cfg)
 
-    logger.info(f"🌐 تست HTTP {len(configs)} کانفیگ (همزمان: {MAX_CONCURRENT_XRAY})...")
     results = await asyncio.gather(
         *[bounded(c) for c in configs],
         return_exceptions=True,
@@ -262,29 +288,83 @@ async def http_test_batch(
     for item in results:
         if isinstance(item, BaseException):
             failed += 1
-            reasons[type(item).__name__] = reasons.get(type(item).__name__, 0) + 1
+            name = type(item).__name__
+            reasons[name] = reasons.get(name, 0) + 1
             continue
         cfg, (ok, ms, reason) = item
         if ok:
-            valid.append((cfg, ms))
-            latencies.append(ms)
+            passed.append((cfg, ms))
         else:
             failed += 1
             reasons[reason] = reasons.get(reason, 0) + 1
 
-    # مرتب از سریع‌ترین
+    return passed, failed, reasons
+
+
+async def http_test_batch(
+    configs: List[str],
+) -> Tuple[List[Tuple[str, float]], dict]:
+    """تست چنددوره‌ای؛ فقط کانفیگی که *همه‌ی* دورها را پاس کند برمی‌گردد."""
+    rounds = max(1, HTTP_TEST_ROUNDS)
+    logger.info(
+        f"🌐 تست HTTP {len(configs)} کانفیگ در {rounds} دور "
+        f"(همزمان: {MAX_CONCURRENT_XRAY})..."
+    )
+
+    survivors = list(configs)
+    per_config_ms: dict = {}
+    round_stats: List[dict] = []
+    reasons: dict = {}
+
+    for index in range(1, rounds + 1):
+        if not survivors:
+            break
+        if index > 1 and HTTP_ROUND_GAP_SEC > 0:
+            # بدون فاصله هر سه دور یک لحظه‌ی شبکه را می‌سنجند و شرط
+            # «همه‌ی دورها» بی‌معنا می‌شود.
+            await asyncio.sleep(HTTP_ROUND_GAP_SEC)
+
+        started = time.monotonic()
+        passed, failed, round_reasons = await _one_round(survivors)
+        for reason, count in round_reasons.items():
+            reasons[reason] = reasons.get(reason, 0) + count
+        for cfg, ms in passed:
+            per_config_ms.setdefault(cfg, []).append(ms)
+
+        round_stats.append({
+            "round": index,
+            "input": len(survivors),
+            "passed": len(passed),
+            "failed": failed,
+            "duration_seconds": round(time.monotonic() - started, 1),
+        })
+        logger.info(
+            f"   دور {index}/{rounds}: {len(passed)}/{len(survivors)} پاس | "
+            f"{round_stats[-1]['duration_seconds']}s"
+        )
+        survivors = [cfg for cfg, _ in passed]
+
+    # میانه‌ی دورها؛ نماینده‌ی واقع‌بینانه‌تری از تأخیر است تا بهترین دور.
+    valid: List[Tuple[str, float]] = [
+        (cfg, round(statistics.median(per_config_ms[cfg]), 1))
+        for cfg in survivors
+        if per_config_ms.get(cfg)
+    ]
     valid.sort(key=lambda x: x[1])
 
+    latencies = [ms for _, ms in valid]
     stats = {
         "total": len(configs),
         "passed": len(valid),
-        "failed": failed,
+        "failed": len(configs) - len(valid),
+        "rounds": rounds,
+        "round_stats": round_stats,
         "avg_ms": round(sum(latencies) / len(latencies), 1) if latencies else 0,
         "best_ms": round(min(latencies), 1) if latencies else 0,
         "top_reasons": dict(sorted(reasons.items(), key=lambda x: -x[1])[:3]),
     }
     logger.info(
-        f"لایه ۶ (HTTP): {stats['passed']}/{stats['total']} | "
+        f"لایه ۷ (HTTP): {stats['passed']}/{stats['total']} بعد از {rounds} دور | "
         f"avg: {stats['avg_ms']}ms | best: {stats['best_ms']}ms"
     )
     return valid, stats

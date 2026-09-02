@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -100,19 +101,29 @@ def parse(config: str) -> Optional[Vless]:
 
 # ─── برچسب‌گذاری (کشور/تأخیر در fragment) ─────────────────────
 
-def build_tag(latency_ms: float = 0, country: str = "") -> str:
-    """ساخت بخش برچسب: مثلاً "NL|84ms"."""
+def build_tag(latency_ms: float = 0, country: str = "", iran_ms: float = 0) -> str:
+    """ساخت بخش برچسب: مثلاً "NL|84ms|IR212".
+
+    iran_ms تأخیر اندازه‌گیری‌شده از نودهای ایرانی check-host است. داخل
+    fragment ذخیره می‌شود نه در فایل جداگانه، چون fragment همراه خود لینک
+    سفر می‌کند: ربات و کانال هر دو فقط valid.txt را می‌خوانند و بدون fetch
+    دوم می‌دانند این کانفیگ از ایران تست شده است.
+    """
     parts = []
     if country and country not in ("??", ""):
         parts.append(country)
     if latency_ms and latency_ms > 0:
         parts.append(f"{round(latency_ms)}ms")
+    if iran_ms and iran_ms > 0:
+        parts.append(f"IR{round(iran_ms)}")
     return "|".join(parts)
 
 
-def add_tag(config: str, latency_ms: float = 0, country: str = "") -> str:
+def add_tag(
+    config: str, latency_ms: float = 0, country: str = "", iran_ms: float = 0
+) -> str:
     """افزودن برچسب به fragment و پاک کردن برچسب قبلی."""
-    tag = build_tag(latency_ms, country)
+    tag = build_tag(latency_ms, country, iran_ms)
     if not tag:
         return config
     base, fragment = split_fragment(config)
@@ -156,6 +167,31 @@ def get_latency_ms(config: str) -> float:
         return float(raw[:-2].strip())
     except ValueError:
         return float("inf")
+
+
+def get_iran_ms(config: str) -> float:
+    """تأخیر از نودهای ایرانی؛ ۰ یعنی برچسب ندارد (تست نشده یا رد شده)."""
+    _, fragment = split_fragment(config)
+    for part in fragment.split("|")[1:]:
+        part = part.strip()
+        if part.startswith("IR") and part[2:].isdigit():
+            return float(part[2:])
+    return 0.0
+
+
+def is_iran_verified(config: str) -> bool:
+    """آیا این کانفیگ برچسب تأیید ایران دارد؟"""
+    return get_iran_ms(config) > 0
+
+
+def short_id(config: str) -> str:
+    """شناسه‌ی کوتاه و پایدار برای ارجاع انسانی به یک کانفیگ.
+
+    از *بدنه‌ی* لینک (بدون fragment) گرفته می‌شود، پس با عوض شدن برچسب
+    تأخیر یا اسم تغییر نمی‌کند — همان کانفیگ در چند اجرا یک شناسه دارد.
+    """
+    base, _ = split_fragment(config.strip())
+    return hashlib.sha1(base.encode("utf-8", "ignore")).hexdigest()[:4].upper()
 
 
 def get_security_label(config: str) -> str:

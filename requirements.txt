@@ -1,9 +1,10 @@
-aiohttp==3.9.3
-aiohttp-socks==0.8.4
-aiofiles==23.2.1
-python-telegram-bot==21.1.1
-telethon==1.34.0
-httpx==0.27.0
-colorlog==6.8.2
-qrcode[pil]==7.4.2
-Pillow==10.3.0
+# هر خط با نام فایلی که واقعاً import می‌کند مستند شده تا وابستگی مرده اضافه نشود.
+# aiofiles و httpx قبلاً اینجا بودند و هیچ‌جای پروژه import نمی‌شدند.
+
+aiohttp==3.9.3            # همه‌ی لایه‌های شبکه + scraper + checkhost
+aiohttp-socks==0.8.4      # src/tester/http_tester.py — عبور از پروکسی محلی xray
+python-telegram-bot==21.1.1  # bot.py و src/publisher/publisher.py
+telethon==1.34.0          # src/scraper/telegram_scraper.py — خواندن کانال‌ها
+colorlog==6.8.2           # src/logger.py
+qrcode[pil]==7.4.2        # bot.py — QR کانفیگ
+Pillow==10.3.0            # backend تصویر qrcode (پین صریح برای build قابل تکرار)

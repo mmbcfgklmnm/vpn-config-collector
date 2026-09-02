@@ -1,8 +1,14 @@
 name: 🛡️ VPN Config Collector v2
 
+# نقش این workflow فقط *ساختن پول کانفیگ* است، نه انتشار در کانال.
+# انتشار هر ۵ دقیقه را پروسه‌ی همیشه-روشن ربات (bot.py) انجام می‌دهد؛
+# زمان‌بندی cron گیت‌هاب best-effort است و به ۵ دقیقه نمی‌رسد.
+# هر ۳۰ دقیقه: pipeline کامل ~۳ تا ۱۵ دقیقه طول می‌کشد (لایه ۴ check-host و
+# لایه ۷ سه دور xray)، پس دو اجرا روی هم نمی‌افتند و ربات همیشه پولی
+# حداکثر ۳۰ دقیقه کهنه دارد.
 on:
   schedule:
-    - cron: "0 * * * *"  # هر ۱ ساعت
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       skip_telegram:
@@ -11,6 +17,14 @@ on:
         default: false
       skip_xray:
         description: "رد کردن تست xray"
+        type: boolean
+        default: false
+      skip_checkhost:
+        description: "رد کردن تست دسترسی از ایران (check-host)"
+        type: boolean
+        default: false
+      publish:
+        description: "بعد از اجرا یک دسته در کانال پست شود"
         type: boolean
         default: false
 
@@ -25,6 +39,9 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    env:
+      # بمپ نسخه فقط همین یک خط است.
+      XRAY_VERSION: v26.3.27
 
     steps:
       - name: 📥 Checkout
@@ -45,8 +62,26 @@ jobs:
       - name: ⬇️ دانلود xray-core
         if: ${{ !fromJSON(inputs.skip_xray || 'false') }}
         run: |
-          wget -q "https://github.com/XTLS/Xray-core/releases/download/v1.8.10/Xray-linux-64.zip"
-          unzip -q Xray-linux-64.zip xray
+          set -euo pipefail
+          base="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}"
+          curl -fsSL --retry 3 --retry-delay 2 -o xray.zip      "${base}/Xray-linux-64.zip"
+          curl -fsSL --retry 3 --retry-delay 2 -o xray.zip.dgst "${base}/Xray-linux-64.zip.dgst"
+          # فایل .dgst چهار خط دارد: MD5= / SHA1= / SHA2-256= / SHA2-512=
+          # فقط خط ۲۵۶ را می‌گیریم (الگو نسخه‌های sha256/sha-256 را هم پوشش
+          # می‌دهد). این تأیید جلوی دانلود نصفه/دست‌کاری‌شده در مسیر را
+          # می‌گیرد؛ ادعای بیشتری ندارد چون هر دو فایل از یک منبع می‌آیند.
+          expected="$(grep -iE 'sha2?-?256' xray.zip.dgst | grep -ioE '[0-9a-f]{64}' | head -1)"
+          actual="$(sha256sum xray.zip | cut -d' ' -f1)"
+          if [ -z "${expected}" ]; then
+            echo "::error::SHA256 در فایل .dgst پیدا نشد — تأیید ممکن نیست"
+            exit 1
+          fi
+          if [ "${expected}" != "${actual}" ]; then
+            echo "::error::checksum نامعتبر (expected=${expected} actual=${actual})"
+            exit 1
+          fi
+          echo "🔐 checksum تأیید شد"
+          unzip -q -o xray.zip xray
           chmod +x xray
           echo "✅ xray: $(./xray version | head -1)"
 
@@ -59,10 +94,25 @@ jobs:
           TELEGRAM_SESSION:    ${{ secrets.TELEGRAM_SESSION }}
           GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO:         ${{ github.repository }}
+          GITHUB_BRANCH:       ${{ github.ref_name }}
           REPO_URL:            https://github.com/${{ github.repository }}
+          # برای برچسب‌گذاری کانفیگ‌ها و امضای پیام‌ها؛ محرمانه نیست، پس vars.
+          CHANNEL_USERNAME:    ${{ vars.CHANNEL_USERNAME }}
+          # لایه ۴ — دسترسی واقعی از ایران. API عمومی check-host کلید لازم
+          # ندارد؛ اگر secret ست شده باشد هدر Authorization فرستاده می‌شود.
+          CHECKHOST_API_KEY:   ${{ secrets.CHECKHOST_API_KEY }}
+          # با vars قابل تنظیم بدون تغییر کد؛ خالی یعنی پیش‌فرض config.py.
+          CHECKHOST_NODES:         ${{ vars.CHECKHOST_NODES }}
+          CHECKHOST_MIN_NODES:     ${{ vars.CHECKHOST_MIN_NODES }}
+          CHECKHOST_MAX_ENDPOINTS: ${{ vars.CHECKHOST_MAX_ENDPOINTS }}
+          CHECKHOST_TARGET_ALIVE:  ${{ vars.CHECKHOST_TARGET_ALIVE }}
           XRAY_BINARY_PATH:    ./xray
           SKIP_TELEGRAM:       ${{ inputs.skip_telegram && 'true' || 'false' }}
           SKIP_XRAY:           ${{ inputs.skip_xray && 'true' || 'false' }}
+          SKIP_CHECKHOST:      ${{ inputs.skip_checkhost && 'true' || 'false' }}
+          # پیش‌فرض خاموش: انتشار کار ربات است. اگر ربات همیشه-روشن نداری،
+          # با تیک زدن publish در workflow_dispatch یک دسته پست می‌شود.
+          PUBLISH_AFTER_COLLECT: ${{ inputs.publish && 'true' || 'false' }}
         run: python -m src.main
 
       - name: 📝 آپدیت README
@@ -98,4 +148,4 @@ jobs:
 
       - name: 🧹 پاکسازی
         if: always()
-        run: rm -f xray Xray-linux-64.zip *.tmp 2>/dev/null || true
+        run: rm -f xray xray.zip xray.zip.dgst Xray-linux-64.zip *.tmp 2>/dev/null || true

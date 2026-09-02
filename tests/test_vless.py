@@ -97,6 +97,63 @@ def test_untagged_sorts_last():
     assert vless.get_latency_ms(REALITY) == float("inf")
 
 
+# ─── برچسب تأیید ایران ────────────────────────────────────
+# چرا روی خودِ لینک: ربات و کانال هر دو باید بدانند کدام کانفیگ از داخل
+# ایران جواب داده، بدون وابستگی به فایل دوم (iran.txt) که ممکن است نباشد.
+
+def test_iran_tag_round_trip():
+    tagged = vless.add_tag(REALITY, 210, "NL", 180)
+    assert tagged.endswith("#My_Node|NL|210ms|IR180")
+    assert vless.get_iran_ms(tagged) == 180.0
+    assert vless.is_iran_verified(tagged) is True
+    # برچسب‌های دیگر نباید قربانی شوند
+    assert vless.get_country(tagged) == "NL"
+    assert vless.get_latency_ms(tagged) == 210.0
+    assert vless.get_name(tagged) == "My_Node"
+
+
+def test_no_iran_tag_means_not_verified():
+    tagged = vless.add_tag(REALITY, 95, "DE")
+    assert vless.get_iran_ms(tagged) == 0.0
+    assert vless.is_iran_verified(tagged) is False
+    assert vless.is_iran_verified(REALITY) is False
+
+
+def test_iran_tag_replaced_not_duplicated():
+    """اجرای بعدی باید برچسب قبلی را جایگزین کند، نه اضافه."""
+    once = vless.add_tag(REALITY, 210, "NL", 180)
+    twice = vless.add_tag(once, 200, "NL", 240)
+    assert twice.count("IR") == 1
+    assert vless.get_iran_ms(twice) == 240.0
+
+
+def test_iran_zero_ms_is_not_verified():
+    """۰ یعنی «برچسب ندارد»؛ نباید IR0 بنویسد و تأییدشده حساب شود."""
+    tagged = vless.add_tag(REALITY, 100, "NL", 0)
+    assert "IR" not in tagged.split("#", 1)[1]
+    assert vless.is_iran_verified(tagged) is False
+
+
+# ─── شناسه‌ی کوتاه ────────────────────────────────────────
+
+def test_short_id_is_stable_across_tag_changes():
+    """چرخش انتشار روی این شناسه حساب می‌کند؛ با عوض شدن تأخیر نباید عوض شود."""
+    a = vless.add_tag(REALITY, 84, "NL", 150)
+    b = vless.add_tag(REALITY, 900, "DE", 0)
+    assert vless.short_id(a) == vless.short_id(b) == vless.short_id(REALITY)
+
+
+def test_short_id_differs_per_config():
+    assert vless.short_id(REALITY) != vless.short_id(WS_TLS)
+
+
+def test_short_id_format():
+    sid = vless.short_id(REALITY)
+    assert len(sid) == 4
+    assert sid == sid.upper()
+    assert all(ch in "0123456789ABCDEF" for ch in sid)
+
+
 def test_security_label_ignores_name_text():
     """کانفیگ TLS با کلمه‌ی reality در اسمش نباید Reality شمرده شود."""
     cfg = WS_TLS.replace("#WS Node", "#free-reality-node")

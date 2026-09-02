@@ -12,6 +12,7 @@ from src.config import (
     TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION,
     TELEGRAM_CHANNELS, MAX_PER_SOURCE,
 )
+from src.health import record as record_health
 from src.logger import get_logger
 
 logger = get_logger("telegram_scraper")
@@ -64,11 +65,14 @@ async def scrape_telegram() -> List[str]:
                         if len(configs) >= MAX_PER_SOURCE:
                             break
                     logger.info(f"  📡 @{channel}: {len(configs)} کانفیگ")
+                    record_health("telegram", channel, len(configs))
                     all_configs.extend(configs)
                     await asyncio.sleep(1.5)
                 except ChannelPrivateError:
                     logger.warning(f"  ⚠️ خصوصی: @{channel}")
+                    record_health("telegram", channel, 0, "کانال خصوصی شد")
                 except FloodWaitError as e:
+                    record_health("telegram", channel, 0, f"flood {e.seconds}s")
                     if e.seconds > MAX_FLOOD_WAIT_SEC:
                         logger.warning(
                             f"  ⏳ flood {e.seconds}s — از این کانال رد شدیم"
@@ -78,6 +82,7 @@ async def scrape_telegram() -> List[str]:
                     await asyncio.sleep(e.seconds)
                 except Exception as e:
                     logger.debug(f"  خطا @{channel}: {e}")
+                    record_health("telegram", channel, 0, type(e).__name__)
 
         logger.info(f"✅ تلگرام: {len(all_configs)} کانفیگ از {len(TELEGRAM_CHANNELS)} کانال")
         return all_configs

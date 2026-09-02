@@ -1,11 +1,14 @@
 """
-لایه ۴: تست TLS Handshake واقعی
+لایه ۵: تست TLS Handshake واقعی
 بدون xray — مستقیم به سرور وصل میشه و TLS negotiate می‌کنه
 
-دو اشکال نسخه‌ی قبلی:
+سه اشکال نسخه‌ی قبلی:
   ۱. برای reality تایمر *بعد از* اتصال شروع می‌شد، پس تأخیر همیشه ۰ بود و
      همه‌ی کانفیگ‌های reality بدون برچسب تأخیر می‌موندند (و در sort آخر).
   ۲. تایم‌اوت و سقف همزمانی داخل فایل hardcode بود و از config خوانده نمی‌شد.
+  ۳. کانفیگ security=none با «security نامعتبر» رد می‌شد. حالا که لایه ۱
+     نوع CDN-plain را می‌پذیرد، این یعنی همان دسته‌ای که بالاترین نرخ
+     دسترسی از ایران را دارد دو لایه بعد دوباره حذف می‌شد.
 """
 import asyncio
 import ssl
@@ -80,6 +83,7 @@ async def test_tls_single(config: str) -> Tuple[bool, float, str]:
     تست یک کانفیگ
     - reality → فقط TCP (reality داخل خودش TLS رو انجام می‌ده)
     - tls/xtls → TLS handshake واقعی
+    - none    → فقط TCP (کانفیگ CDN بدون TLS؛ handshake معنا نداره)
     """
     info = vless.parse(config)
     if info is None or not info.host:
@@ -89,19 +93,18 @@ async def test_tls_single(config: str) -> Tuple[bool, float, str]:
     port = info.port or 443
     security = info.security
 
-    if security == "reality":
-        ok, ms = await tcp_connect(host, port)
-        if ok:
-            return True, ms, ""
-        return False, 0.0, f"TCP fail به {host}:{port}"
-
     if security in ("tls", "xtls"):
         ok, ms = await tls_handshake(host, port, info.sni)
         if ok:
             return True, ms, ""
         return False, 0.0, f"TLS handshake fail: {host}:{port}"
 
-    return False, 0.0, f"security نامعتبر: {security}"
+    # reality و none: TLS معمولی negotiate نمی‌شود. برای none این تنها
+    # سنجش ممکن در این لایه است — تأیید واقعی در لایه‌ی xray انجام می‌شود.
+    ok, ms = await tcp_connect(host, port)
+    if ok:
+        return True, ms, ""
+    return False, 0.0, f"TCP fail به {host}:{port}"
 
 
 async def test_tls_batch(configs: List[str]) -> Tuple[List[Tuple[str, float]], dict]:
@@ -135,5 +138,5 @@ async def test_tls_batch(configs: List[str]) -> Tuple[List[Tuple[str, float]], d
         "failed": failed,
         "avg_tls_ms": round(sum(latencies) / len(latencies), 1) if latencies else 0,
     }
-    logger.info(f"لایه ۴ (TLS): {stats['passed']}/{stats['total']} | avg: {stats['avg_tls_ms']}ms")
+    logger.info(f"لایه ۵ (TLS): {stats['passed']}/{stats['total']} | avg: {stats['avg_tls_ms']}ms")
     return valid, stats

@@ -20,6 +20,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import vless
 from src.config import GITHUB_REPOS, GITHUB_TOKEN, MAX_PER_SOURCE
+from src.health import record as record_health
 from src.logger import get_logger
 
 logger = get_logger("github_scraper")
@@ -127,6 +128,10 @@ async def scrape_repo(
                 break
 
     logger.info(f"  📂 {repo}: {len(configs)} کانفیگ ({len(files)} فایل)")
+    record_health(
+        "github", repo, len(configs),
+        "" if files else "هیچ فایل کاندیدی پیدا نشد",
+    )
     return configs[:MAX_PER_SOURCE]
 
 

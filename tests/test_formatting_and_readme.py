@@ -50,22 +50,33 @@ STATS = {
     "duration_seconds": 91.2,
     "raw_collected": 4000,
     "valid_configs": 37,
+    "iran_verified": 12,
     "pipeline": {
         "layer1_format": {"valid": 900},
         "layer2_dedup": {"unique": 500},
         "layer3_tcp": {"connected": 200},
-        "layer4_tls": {"passed": 120},
-        "layer5_geo": {"passed": 110},
-        "layer6_http": {"passed": 37},
+        "layer4_iran": {"passed": 150},
+        "layer5_tls": {"passed": 120},
+        "layer6_geo": {"passed": 110},
+        "layer7_http": {"passed": 37, "rounds": 3},
     },
 }
 
 
 def test_build_rows_uses_real_layer_keys():
-    """کلید layer4_tls است نه layer4_xray — قبلاً همیشه خط تیره می‌شد."""
+    """کلیدها باید دقیقاً همان چیزی باشند که src/main.py می‌نویسد.
+
+    قبلاً layer4_xray خوانده می‌شد که هیچ‌وقت وجود نداشت و هر خط لایه خط
+    تیره می‌شد؛ بعد از اضافه شدن لایه‌ی «دسترسی از ایران» شماره‌ها هم
+    یکی جابه‌جا شدند.
+    """
     rows = update_readme.build_rows(STATS)
-    assert "| لایه ۴ TLS | 120 |" in rows
-    assert "| لایه ۶ HTTP | 37 |" in rows
+    assert "| لایه ۳ TCP | 200 |" in rows
+    assert "| لایه ۴ دسترسی از ایران | 150 |" in rows
+    assert "| لایه ۵ TLS | 120 |" in rows
+    assert "| لایه ۶ Geo | 110 |" in rows
+    assert "| لایه ۷ HTTP (3 دور) | 37 |" in rows
+    assert "| 🇮🇷 تأییدشده از ایران | **12** |" in rows
     assert update_readme.DASH not in rows
     assert "2026-09-01 12:34:56 UTC" in rows
 

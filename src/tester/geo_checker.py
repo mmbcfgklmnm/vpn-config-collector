@@ -1,5 +1,5 @@
 """
-لایه ۵: بررسی موقعیت جغرافیایی سرور
+لایه ۶: بررسی موقعیت جغرافیایی سرور
 سرور نباید در کشورهای بلاک‌شده باشه (پیش‌فرض: IR, KP)
 
 اصلاحات نسبت به نسخه‌ی قبلی:
@@ -216,6 +216,6 @@ async def check_geo_batch(configs: List[str]) -> Tuple[List[Tuple[str, str]], di
             "فیلتر جغرافیایی این اجرا قابل اعتماد نیست"
         )
     logger.info(
-        f"لایه ۵ (Geo): {stats['passed']}/{stats['total']} | کشورها: {countries}"
+        f"لایه ۶ (Geo): {stats['passed']}/{stats['total']} | کشورها: {countries}"
     )
     return valid, stats

@@ -31,11 +31,13 @@ def _write_local(tmp_path, monkeypatch, configs, timestamp):
 
 
 def _set_remote(monkeypatch, configs, timestamp):
-    monkeypatch.setattr(bot, "_configs_cache", list(configs))
-    monkeypatch.setattr(
-        bot, "_stats_cache",
+    """cache ربات یک dict است (`_cache`)، نه چند متغیر ماژول."""
+    monkeypatch.setitem(bot._cache, "configs", list(configs))
+    monkeypatch.setitem(
+        bot._cache, "stats",
         {"timestamp": timestamp, "valid_configs": len(configs)} if configs else {},
     )
+    monkeypatch.setitem(bot._cache, "iran", [])
 
 
 def test_remote_wins_when_newer(tmp_path, monkeypatch):

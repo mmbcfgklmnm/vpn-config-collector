@@ -88,6 +88,15 @@ def layer(stats: dict, name: str, key: str) -> object:
 def build_rows(stats: dict) -> str:
     ts = str(stats.get("timestamp", ""))[:19].replace("T", " ") or DASH
     rounds = layer(stats, "layer7_http", "rounds")
+    # لایه ۴ دو عدد دارد و یکی‌شان کافی نیست: «عبورکرده» شامل endpoint هایی است
+    # که API دربارهٔ آن‌ها حکمی نداد (سهمیه/سقف) و حذف نمی‌شوند، «تأییدشده»
+    # همان‌هایی است که واقعاً از نود ایرانی جواب دادند.
+    iran_passed = layer(stats, "layer4_iran", "passed")
+    iran_verified = layer(stats, "layer4_iran", "verified")
+    iran_cell = (
+        f"{iran_passed}" if iran_verified == DASH
+        else f"{iran_passed} ({iran_verified} تأییدشده)"
+    )
     return "\n".join(
         [
             "| فیلد | مقدار |",
@@ -100,7 +109,7 @@ def build_rows(stats: dict) -> str:
             f"| لایه ۱ فرمت | {layer(stats, 'layer1_format', 'valid')} |",
             f"| لایه ۲ حذف تکراری | {layer(stats, 'layer2_dedup', 'unique')} |",
             f"| لایه ۳ TCP | {layer(stats, 'layer3_tcp', 'connected')} |",
-            f"| لایه ۴ دسترسی از ایران | {layer(stats, 'layer4_iran', 'passed')} |",
+            f"| لایه ۴ دسترسی از ایران | {iran_cell} |",
             f"| لایه ۵ TLS | {layer(stats, 'layer5_tls', 'passed')} |",
             f"| لایه ۶ Geo | {layer(stats, 'layer6_geo', 'passed')} |",
             f"| لایه ۷ HTTP ({rounds} دور) | {layer(stats, 'layer7_http', 'passed')} |",

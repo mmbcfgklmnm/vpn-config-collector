@@ -84,17 +84,34 @@ MAX_CONCURRENT_GEO  = _int_env("MAX_CONCURRENT_GEO", 20)
 # API عمومی check-host کلید نمی‌خواهد؛ اگر کلید داری ست کن، هدر Authorization
 # فرستاده می‌شود.
 CHECKHOST_API_KEY   = os.getenv("CHECKHOST_API_KEY", "")
-# نودهای ایرانی check-host (تهران/اصفهان/شیراز). ir6 وجود ندارد.
+# نودهای ایرانی check-host. این فهرست حدسی نیست: با tools/checkhost_nodes.py
+# از /nodes/hosts گرفته شده — ۷ نود در ۴ شهر و ۷ ASN مختلف (تهران، اصفهان،
+# شیراز). ir6 وجود ندارد. هر ۷ نود در *یک* درخواست تست می‌شوند، پس اضافه
+# کردن‌شان سهمیه‌ی بیشتری مصرف نمی‌کند و شاهد بیشتری می‌دهد.
 CHECKHOST_NODES     = _list_env(
     "CHECKHOST_NODES",
-    "ir1.node.check-host.net,ir3.node.check-host.net,ir5.node.check-host.net",
+    "ir1.node.check-host.net,ir2.node.check-host.net,ir3.node.check-host.net,"
+    "ir4.node.check-host.net,ir5.node.check-host.net,ir7.node.check-host.net,"
+    "ir8.node.check-host.net",
 )
-# چند نود ایرانی باید موفق شوند تا کانفیگ قبول شود. ۱ یعنی سخت‌گیری کمتر.
-CHECKHOST_MIN_NODES     = _int_env("CHECKHOST_MIN_NODES", 1)
-CHECKHOST_CONCURRENCY   = _int_env("CHECKHOST_CONCURRENCY", 12)
-# سقف endpoint هایی که به API فرستاده می‌شوند (سهمیه‌ی سایت مستند نیست، پس
-# محافظه‌کارانه). نرخ اندازه‌گیری‌شده ~۲ endpoint در ثانیه با همزمانی ۱۲.
-CHECKHOST_MAX_ENDPOINTS = _int_env("CHECKHOST_MAX_ENDPOINTS", 600)
+# چند نود ایرانی باید موفق شوند تا کانفیگ قبول شود. ۲ از ۷ یعنی «دو دیتاسنتر
+# مستقل وصل شدند»؛ با ۱ یک نود بی‌ثبات کافی بود. اگر پول خروجی خیلی کوچک شد،
+# با repository variable برگردانش به ۱.
+CHECKHOST_MIN_NODES     = _int_env("CHECKHOST_MIN_NODES", 2)
+# اجرای واقعی ۲۰:۱۱ UTC با همزمانی ۱۲ و ۶۰۰ endpoint: ۵۸۱ پاسخ «HTTP 429» و
+# فقط ۱۳ حکم واقعی. یعنی سهمیه‌ی API عمومی بسیار کمتر از حدس اولیه است.
+# محدودکننده‌ی نرخ (پایین) اضافه شد و همزمانی پایین آمد.
+CHECKHOST_CONCURRENCY   = _int_env("CHECKHOST_CONCURRENCY", 4)
+# کمینه‌ی فاصله‌ی بین دو درخواست ثبت. با هر 429 خودکار بزرگ می‌شود و بعد از
+# موفقیت آرام‌آرام برمی‌گردد؛ پس این عدد نقطه‌ی شروع است نه سقف.
+CHECKHOST_MIN_GAP_SEC   = _float_env("CHECKHOST_MIN_GAP_SEC", 0.8)
+CHECKHOST_MAX_GAP_SEC   = _float_env("CHECKHOST_MAX_GAP_SEC", 20.0)
+# بعد از این تعداد 429، ادامه دادن بی‌فایده است: بقیه‌ی endpoint ها «نامعلوم»
+# می‌مانند (حذف نمی‌شوند) و لایه زودتر تمام می‌شود.
+CHECKHOST_MAX_429       = _int_env("CHECKHOST_MAX_429", 30)
+# سقف endpoint هایی که به API فرستاده می‌شوند. با نرخ ~۱ در ثانیه، ۳۰۰ تا
+# حدود ۵ دقیقه می‌برد (سقف job پنجاه‌وپنج دقیقه است).
+CHECKHOST_MAX_ENDPOINTS = _int_env("CHECKHOST_MAX_ENDPOINTS", 300)
 # به محض رسیدن به این تعداد endpoint زنده، تست متوقف می‌شود.
 CHECKHOST_TARGET_ALIVE  = _int_env("CHECKHOST_TARGET_ALIVE", 150)
 CHECKHOST_TIMEOUT_SEC   = _int_env("CHECKHOST_TIMEOUT_SEC", 20)

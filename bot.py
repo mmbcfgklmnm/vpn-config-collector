@@ -525,6 +525,15 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return "رد شد"
         return str(value.get(key, "—"))
 
+    def iran_cell() -> str:
+        """لایه ۴ دو عدد دارد: «عبورکرده» endpoint های بی‌حکم (سهمیه، سقف) را
+        هم شامل می‌شود، «تأییدشده» همان‌هایی است که از نود ایرانی جواب دادند."""
+        passed = layer("layer4_iran", "passed")
+        verified = layer("layer4_iran", "verified")
+        if verified.isdigit() and verified != passed:
+            return f"{passed} ({verified} تأییدشده)"
+        return passed
+
     counts: Dict[str, int] = {}
     for cfg in configs:
         code = vless.get_country(cfg)
@@ -552,7 +561,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  ۱ فرمت: {layer('layer1_format', 'valid')}\n"
         f"  ۲ حذف تکراری: {layer('layer2_dedup', 'unique')}\n"
         f"  ۳ TCP (فیلتر سخت): {layer('layer3_tcp', 'connected')}\n"
-        f"  ۴ دسترسی از ایران: {layer('layer4_iran', 'passed')}\n"
+        f"  ۴ دسترسی از ایران: {iran_cell()}\n"
         f"  ۵ TLS: {layer('layer5_tls', 'passed')}\n"
         f"  ۶ Geo: {layer('layer6_geo', 'passed')}\n"
         f"  ۷ HTTP واقعی ({rounds} دور): {layer('layer7_http', 'passed')}\n"

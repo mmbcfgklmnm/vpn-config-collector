@@ -186,7 +186,15 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         # می‌شوند. کانفیگ تست‌نشده publish نمی‌شود: لایه‌های ۳ و ۵ فقط
         # می‌گویند «چیزی روی این پورت جواب می‌دهد»، لایه ۷ می‌گوید
         # «تونل VLESS واقعاً کار می‌کند».
-        ordered = sorted(configs, key=lambda c: tls_ms_map.get(c, float("inf")))
+        # تأییدشده‌های ایران اول: اگر سقف بخورد، کانفیگی که از ایران جواب
+        # داده نباید جای خود را به یک سرورِ سریعِ بسته بدهد.
+        ordered = sorted(
+            configs,
+            key=lambda c: (
+                0.0 if iran_ms_map.get(c, 0.0) > 0 else 1.0,
+                tls_ms_map.get(c, float("inf")),
+            ),
+        )
         candidates = ordered[:MAX_HTTP_TEST]
         not_tested = len(ordered) - len(candidates)
         if not_tested:

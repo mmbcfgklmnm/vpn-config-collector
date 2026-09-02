@@ -1,17 +1,35 @@
 {
-  "timestamp": "2026-09-02T20:41:21+00:00",
-  "duration_seconds": 88.5,
-  "raw_collected": 3520,
-  "valid_configs": 3,
-  "iran_verified": 3,
-  "skip_xray": false,
-  "written": {
+  "schema": 1,
+  "updated_at": "2026-09-02T20:41:21+00:00",
+  "counts": {
     "valid": 3,
-    "iran": 3,
+    "iran_verified": 3,
     "top": 3,
     "countries": {
       "US": 3
     }
+  },
+  "publish": {
+    "per_batch": 10,
+    "interval_minutes": 5
+  },
+  "files": {
+    "valid": "configs/valid.txt",
+    "valid_base64": "configs/sub_base64.txt",
+    "iran": "configs/iran.txt",
+    "iran_base64": "configs/iran_base64.txt",
+    "top": "configs/top10.txt",
+    "all_raw": "configs/all.txt",
+    "stats": "configs/stats.json",
+    "health": "configs/health.json",
+    "by_country_dir": "configs/countries"
+  },
+  "urls": {
+    "valid": "https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/valid.txt",
+    "valid_base64": "https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/sub_base64.txt",
+    "iran": "https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/iran.txt",
+    "index": "https://raw.githubusercontent.com/mmbcfgklmnm/vpn-config-collector/main/configs/index.json",
+    "mirror": "https://cdn.jsdelivr.net/gh/mmbcfgklmnm/vpn-config-collector@main/configs/valid.txt"
   },
   "pipeline": {
     "layer1_format": {

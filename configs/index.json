@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "updated_at": "2026-09-02T20:41:21+00:00",
+  "updated_at": "2026-09-02T21:10:04+00:00",
   "counts": {
-    "valid": 3,
-    "iran_verified": 3,
-    "top": 3,
+    "valid": 2,
+    "iran_verified": 2,
+    "top": 2,
     "countries": {
-      "US": 3
+      "US": 2
     }
   },
   "publish": {
@@ -33,118 +33,119 @@
   },
   "pipeline": {
     "layer1_format": {
-      "total": 3520,
-      "valid": 3091,
-      "invalid": 429,
-      "cdn_plain": 468,
+      "total": 3457,
+      "valid": 3048,
+      "invalid": 409,
+      "cdn_plain": 476,
       "top_reasons": {
-        "security نامعتبر: none": 340,
-        "security نامعتبر: ": 42,
-        "reality بدون pbk": 36,
+        "security نامعتبر: none": 328,
+        "security نامعتبر: ": 37,
+        "reality بدون pbk": 33,
         "UUID نامعتبر: 1lpxy6haqm": 2,
         "UUID نامعتبر: ": 2
       }
     },
     "layer2_dedup": {
-      "total": 3091,
-      "unique": 2862,
+      "total": 3048,
+      "unique": 2844,
       "exact_dups": 0,
-      "norm_dups": 141,
-      "fp_dups": 88
+      "norm_dups": 128,
+      "fp_dups": 76
     },
     "layer3_tcp": {
-      "total": 2862,
-      "connected": 2253,
-      "failed": 609,
+      "total": 2844,
+      "connected": 2238,
+      "failed": 606,
       "unparsable": 0,
-      "endpoints_total": 2134,
-      "endpoints_alive": 1549,
+      "endpoints_total": 2131,
+      "endpoints_alive": 1553,
       "attempts_required": 2,
-      "avg_latency_ms": 110.4,
-      "duration_seconds": 20.7
+      "avg_latency_ms": 92.3,
+      "duration_seconds": 20.2
     },
     "layer4_iran": {
-      "total": 2253,
-      "passed": 15,
-      "failed": 2238,
+      "total": 2238,
+      "passed": 13,
+      "failed": 2225,
       "skipped": false,
-      "endpoints_total": 1549,
+      "endpoints_total": 1553,
       "endpoints_checked": 600,
-      "endpoints_alive": 14,
+      "endpoints_alive": 9,
       "nodes": [
         "ir1.node.check-host.net",
         "ir3.node.check-host.net",
         "ir5.node.check-host.net"
       ],
       "top_reasons": {
-        "submit: HTTP 429": 579,
-        "از ایران بسته است": 7
+        "submit: HTTP 429": 586,
+        "از ایران بسته است": 5
       },
-      "api_errors": 579
+      "api_errors": 586
     },
     "layer5_tls": {
-      "total": 15,
-      "passed": 15,
-      "failed": 0,
-      "avg_tls_ms": 155.8
+      "total": 13,
+      "passed": 12,
+      "failed": 1,
+      "avg_tls_ms": 127.9
     },
     "layer6_geo": {
-      "total": 15,
-      "passed": 15,
+      "total": 12,
+      "passed": 12,
       "failed": 0,
       "unknown_country": 0,
       "countries": {
-        "US": 15
+        "US": 12
       }
     },
     "layer7_http": {
-      "total": 15,
-      "passed": 3,
-      "failed": 12,
+      "total": 12,
+      "passed": 2,
+      "failed": 10,
       "rounds": 3,
       "round_stats": [
         {
           "round": 1,
-          "input": 15,
-          "passed": 3,
-          "failed": 12,
-          "duration_seconds": 16.1
+          "input": 12,
+          "passed": 2,
+          "failed": 10,
+          "duration_seconds": 10.2
         },
         {
           "round": 2,
-          "input": 3,
-          "passed": 3,
+          "input": 2,
+          "passed": 2,
           "failed": 0,
-          "duration_seconds": 1.1
+          "duration_seconds": 0.2
         },
         {
           "round": 3,
-          "input": 3,
-          "passed": 3,
+          "input": 2,
+          "passed": 2,
           "failed": 0,
-          "duration_seconds": 1.0
+          "duration_seconds": 0.2
         }
       ],
-      "avg_ms": 353.5,
-      "best_ms": 55.6,
+      "avg_ms": 29.3,
+      "best_ms": 26.7,
       "top_reasons": {
-        "همه URL ها fail شدن": 12
+        "همه URL ها fail شدن": 7,
+        "xray بالا نیامد: a256\". Please update your config(s) according to release note and documentation.": 3
       },
       "not_tested": 0
     },
     "summary": {
       "funnel": [
-        3520,
-        3091,
-        2862,
-        2253,
-        15,
-        15,
-        15,
-        3
+        3457,
+        3048,
+        2844,
+        2238,
+        13,
+        12,
+        12,
+        2
       ],
-      "final": 3,
-      "iran_verified": 3
+      "final": 2,
+      "iran_verified": 2
     }
   }
 }

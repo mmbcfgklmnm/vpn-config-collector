@@ -8,3 +8,13 @@ xray
 .env
 configs/failed.txt
 xray.exe
+
+# صف اهدای کاربران — محتوایش داده‌ی کاربر است و در مخزن عمومی بایگانی نمی‌شود.
+configs/donations.json
+configs/donations.json.tmp
+# salt هش اهداکننده. با لو رفتنش هش‌های صف قابل brute-force می‌شوند و
+# «شناسه‌ی تلگرام ذخیره نمی‌شود» بی‌معنی می‌شود.
+configs/.donate_salt
+# وضعیت ماندگار ربات (روشن/خاموش) — مخصوص همان ماشین است.
+configs/bot_state.json
+configs/bot_state.json.tmp

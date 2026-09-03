@@ -22,9 +22,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src import health, vless
 from src.config import (
     ALL_FILE, BY_COUNTRY_DIR, CONFIGS_DIR, HEALTH_FILE, INDEX_FILE,
-    INDEX_URL, IRAN_B64_FILE, IRAN_FILE, PUBLISH_COUNT, PUBLISH_INTERVAL_MIN,
-    STATS_FILE, SUB_B64_FILE, SUB_B64_URL, SUB_IRAN_URL, SUB_MIRROR_URL,
-    SUB_URL, TOP_FILE, VALID_FILE,
+    INDEX_URL, INTL_B64_FILE, INTL_FILE, IRAN_B64_FILE, IRAN_FILE, POOL_FILE,
+    PUBLISH_COUNT, PUBLISH_INTERVAL_MIN, STATS_FILE, SUB_B64_FILE,
+    SUB_B64_URL, SUB_INTL_B64_URL, SUB_INTL_URL, SUB_IRAN_B64_URL,
+    SUB_IRAN_URL, SUB_MIRROR_URL, SUB_URL, TOP_FILE, VALID_FILE,
 )
 from src.logger import get_logger
 
@@ -131,14 +132,20 @@ def build_index(
     iran_configs: List[str],
     countries: Dict[str, int],
     stats: Optional[Dict] = None,
+    intl_configs: Optional[List[str]] = None,
+    pool_configs: Optional[List[str]] = None,
 ) -> Dict:
     """قرارداد ماشین‌خوان. مصرف‌کننده این را بخواند، نه مسیرها را."""
+    intl_configs = intl_configs if intl_configs is not None else []
+    pool_configs = pool_configs if pool_configs is not None else []
     return {
-        "schema": 1,
+        "schema": 2,
         "updated_at": utc_now(),
         "counts": {
             "valid": len(configs),
             "iran_verified": len(iran_configs),
+            "international": len(intl_configs),
+            "pool": len(pool_configs),
             "top": min(PUBLISH_COUNT, len(configs)),
             "countries": countries,
         },
@@ -151,6 +158,9 @@ def build_index(
             "valid_base64": SUB_B64_FILE,
             "iran": IRAN_FILE,
             "iran_base64": IRAN_B64_FILE,
+            "international": INTL_FILE,
+            "international_base64": INTL_B64_FILE,
+            "pool": POOL_FILE,
             "top": TOP_FILE,
             "all_raw": ALL_FILE,
             "stats": STATS_FILE,
@@ -161,6 +171,9 @@ def build_index(
             "valid": SUB_URL,
             "valid_base64": SUB_B64_URL,
             "iran": SUB_IRAN_URL,
+            "iran_base64": SUB_IRAN_B64_URL,
+            "international": SUB_INTL_URL,
+            "international_base64": SUB_INTL_B64_URL,
             "index": INDEX_URL,
             "mirror": SUB_MIRROR_URL,
         },
@@ -172,23 +185,43 @@ def write_all(
     configs: List[str],
     stats: Optional[Dict] = None,
     raw_configs: Optional[List[str]] = None,
+    pool_configs: Optional[List[str]] = None,
 ) -> Dict[str, object]:
-    """نوشتن کل خروجی یک اجرا. برمی‌گرداند: خلاصه‌ی چیزی که نوشته شد."""
+    """نوشتن کل خروجی یک اجرا. برمی‌گرداند: خلاصه‌ی چیزی که نوشته شد.
+
+    `pool_configs` پول ذخیره است: کانفیگ‌هایی که لایه‌های ۳ تا ۶ را پاس
+    کردند ولی تأیید لایه ۷ ندارند. جدا نوشته می‌شود چون تنها مصرفش پر کردن
+    سهمیه‌ی انتشار است و نباید با خروجی تأییدشده قاطی شود.
+    """
     os.makedirs(CONFIGS_DIR, exist_ok=True)
 
     if raw_configs is not None:
         write_lines(ALL_FILE, raw_configs)
 
     written: Dict[str, object] = {}
+    # پول ذخیره مستقل از خروجی اصلی نوشته می‌شود: حتی اجرایی که هیچ کانفیگ
+    # تأییدشده‌ای نداشت هم می‌تواند پول ذخیره بدهد، و همان است که سهمیه‌ی
+    # ۱۰تایی کانال را نجات می‌دهد.
+    if pool_configs:
+        pool_ordered = sorted(dict.fromkeys(pool_configs), key=vless.get_latency_ms)
+        written["pool"] = write_lines(POOL_FILE, pool_ordered)
+    else:
+        pool_ordered = []
+        written["pool"] = 0
+
     if not configs:
         # هیچ فایل کانفیگی دست نمی‌خورد؛ فقط سلامت منابع ثبت می‌شود تا
         # بشود فهمید چرا اجرا خالی بود.
         logger.warning("⚠️ خروجی خالی — فایل‌های قبلی حفظ شدند")
         write_json(HEALTH_FILE, {"updated_at": utc_now(), **health.snapshot()})
-        return {"valid": 0, "iran": 0, "top": 0, "countries": {}}
+        return {"valid": 0, "iran": 0, "international": 0,
+                "pool": written["pool"], "top": 0, "countries": {}}
 
     ordered = sorted(configs, key=vless.get_latency_ms)
+    # تفکیک داخلی/خارجی در انتهای مسیر تولید اشتراک. مرز دقیقاً همان برچسب
+    # IR است: لایه ۴ از نود ایرانی دیده که این endpoint جواب می‌دهد.
     iran_configs = [c for c in ordered if vless.is_iran_verified(c)]
+    intl_configs = [c for c in ordered if not vless.is_iran_verified(c)]
 
     written["valid"] = write_lines(VALID_FILE, ordered)
     write_b64(SUB_B64_FILE, ordered)
@@ -199,18 +232,27 @@ def write_all(
     else:
         written["iran"] = 0
 
+    if intl_configs:
+        written["international"] = write_lines(INTL_FILE, intl_configs)
+        write_b64(INTL_B64_FILE, intl_configs)
+    else:
+        written["international"] = 0
+
     # top: اول کانفیگ‌های تأییدشده‌ی ایران، بعد بقیه — همان ترتیبی که
     # کانال پست می‌کند.
-    top_pool = iran_configs + [c for c in ordered if c not in set(iran_configs)]
+    top_pool = iran_configs + intl_configs
     written["top"] = write_lines(TOP_FILE, top_pool[:PUBLISH_COUNT])
 
     countries = write_countries(ordered)
     written["countries"] = countries
 
-    write_json(INDEX_FILE, build_index(ordered, iran_configs, countries, stats))
+    write_json(INDEX_FILE, build_index(
+        ordered, iran_configs, countries, stats, intl_configs, pool_ordered,
+    ))
     write_json(HEALTH_FILE, {"updated_at": utc_now(), **health.snapshot()})
     logger.info(
         f"📦 خروجی‌ها نوشته شد | valid={written['valid']} "
-        f"iran={written['iran']} top={written['top']} کشور={len(countries)}"
+        f"iran={written['iran']} intl={written['international']} "
+        f"pool={written['pool']} top={written['top']} کشور={len(countries)}"
     )
     return written

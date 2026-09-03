@@ -3,7 +3,10 @@
 
 aiohttp==3.9.3            # همه‌ی لایه‌های شبکه + scraper + checkhost
 aiohttp-socks==0.8.4      # src/tester/http_tester.py — عبور از پروکسی محلی xray
-python-telegram-bot==21.1.1  # bot.py و src/publisher/publisher.py
+# 22.7 فیلد style دکمه‌ها (Bot API 9.4) را اضافه کرد — دکمه‌های رنگی. کد از
+# src/tg_ui.py رد می‌شود و روی نسخه‌ی قدیمی‌تر هم بی‌رنگ کار می‌کند، ولی برای
+# دیدن رنگ همین پین لازم است. نیازمند Python ≥ 3.10 (CI روی 3.11 است).
+python-telegram-bot==22.8    # bot.py و src/publisher/publisher.py
 telethon==1.34.0          # src/scraper/telegram_scraper.py — خواندن کانال‌ها
 colorlog==6.8.2           # src/logger.py
 qrcode[pil]==7.4.2        # bot.py — QR کانفیگ

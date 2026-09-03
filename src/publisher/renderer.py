@@ -73,6 +73,14 @@ CDN_LABEL = {
 # کیفیت بر اساس تأخیر واقعیِ تونل (اندازه‌گیری xray)، نه پینگ TCP.
 _QUALITY = ((300, "🟢 عالی"), (700, "🟡 خوب"), (1500, "🟠 متوسط"))
 
+# برچسب منبع کارت. لازم است چون سهمیه‌ی ۱۰تایی از سه جا پر می‌شود و ادعای
+# «تست‌شده» برای هر سه‌تا درست نیست: پول ذخیره تونلش تست نشده و اهدایی از
+# کاربر آمده. کاربر باید تفاوت را ببیند، نه اینکه حدس بزند.
+BADGE = {
+    "pool": "🗃 *تست‌نشده* — لایه‌های TCP/دسترسی/TLS را پاس کرده، تونل امتحان نشده",
+    "donated": "🎁 *اهدایی یکی از کاربران* — اعتبارسنجی فرمت شده، تونل امتحان نشده",
+}
+
 
 def quality(latency_ms: float) -> str:
     if not latency_ms or latency_ms <= 0:
@@ -145,17 +153,25 @@ def spec_card(
     index: int = 0,
     total: int = 0,
     verified_rounds: int = 0,
+    badge: str = "",
 ) -> str:
-    """کارت کامل یک کانفیگ: تیتر + مشخصات + لینک قابل کپی."""
+    """کارت کامل یک کانفیگ: تیتر + مشخصات + لینک قابل کپی.
+
+    `badge` منبع کانفیگ است ("pool" یا "donated"). وقتی ست باشد، ادعای «در N
+    دور تست شد» *چاپ نمی‌شود* — آن جمله فقط برای کانفیگی درست است که لایه ۷
+    واقعاً تأییدش کرده.
+    """
     spec = describe(config)
     head = f"🔹 *کانفیگ {index}/{total}*" if index and total else "🔹 *کانفیگ*"
     lines = [
         f"{head}   `#{spec['id']}`",
         f"📛 {tg_md.strip_md(spec['name'], 40)}",
-        "",
-        *spec_lines(config, spec),
     ]
-    if verified_rounds > 1:
+    note = BADGE.get(badge, "")
+    if note:
+        lines.append(note)
+    lines += ["", *spec_lines(config, spec)]
+    if verified_rounds > 1 and not note:
         lines.append(f"✅ در {verified_rounds} دور پشت سر هم تست شد")
     lines += ["", tg_md.code(config)]
     if CHANNEL_USERNAME:

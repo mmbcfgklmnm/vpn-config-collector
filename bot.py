@@ -42,8 +42,8 @@ from typing import Callable, Dict, List, Optional
 import aiohttp
 import qrcode
 from telegram import (
-    BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
-    ReplyKeyboardMarkup, Update,
+    BotCommand, BotCommandScopeChat, InlineKeyboardMarkup, ReplyKeyboardMarkup,
+    Update,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -51,12 +51,15 @@ from telegram.ext import (
     MessageHandler, filters,
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from src import tg_md, vless
+from src import donations, tg_md, tg_ui, vless
 from src.config import (
-    ADMIN_IDS, AUTO_PUBLISH, GITHUB_REPO, GITHUB_TOKEN, HTTP_TEST_ROUNDS,
-    INDEX_FILE, IRAN_FILE, MANUAL_FILE, PUBLISH_COUNT, PUBLISH_INTERVAL_MIN,
-    RAW_BASE, STATS_FILE, SUB_B64_URL, SUB_IRAN_URL, SUB_URL,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID, TG_SAFE_MSG_LEN, VALID_FILE,
+    ADMIN_IDS, AUTO_PUBLISH, BOT_STATE_FILE, DONATE_ENABLED,
+    DONATE_MAX_PER_DAY, DONATE_MAX_PER_MSG, GITHUB_REPO, GITHUB_TOKEN,
+    HEALTH_FILE, HTTP_TEST_ROUNDS, INDEX_FILE, INTL_FILE, IRAN_FILE,
+    MANUAL_FILE, POOL_FILE, PUBLISH_COUNT, PUBLISH_DONATED_COUNT,
+    PUBLISH_FILL_FROM_POOL, PUBLISH_INTERVAL_MIN, RAW_BASE, STATS_FILE,
+    SUB_B64_URL, SUB_INTL_URL, SUB_IRAN_URL, SUB_URL, TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHANNEL_ID, TG_SAFE_MSG_LEN, VALID_FILE, country_sub_url,
 )
 from src.logger import get_logger
 from src.publisher import renderer
@@ -64,7 +67,54 @@ from src.publisher.publisher import Publisher
 
 logger = get_logger("bot")
 
+# ─── وضعیت ماندگار ربات ───────────────────────────────────
+# قبلاً /off فقط یک متغیر در حافظه بود: با هر restart (روی Railway مثلاً بعد
+# از deploy) ربات خودش روشن می‌شد و ادمین خبر نداشت. الان روی دیسک می‌نشیند.
+#
+# BOT_ENABLED  — پاسخ به کاربران عادی. ادمین همیشه دسترسی دارد تا بتواند
+#                دوباره روشنش کند؛ وگرنه با یک /off ربات قابل بازیابی نبود.
+# PUBLISH_PAUSED — فقط حلقه‌ی انتشار خودکار. /publish دستی کار می‌کند.
+
 BOT_ENABLED = True
+PUBLISH_PAUSED = False
+
+
+def load_bot_state() -> None:
+    """خواندن وضعیت از دیسک. فایل نبود = پیش‌فرض (روشن)."""
+    global BOT_ENABLED, PUBLISH_PAUSED
+    try:
+        with open(BOT_STATE_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict):
+        return
+    BOT_ENABLED = bool(data.get("enabled", True))
+    PUBLISH_PAUSED = bool(data.get("publish_paused", False))
+    logger.info(
+        f"⚙️ وضعیت ذخیره‌شده: ربات {'روشن' if BOT_ENABLED else 'خاموش'} | "
+        f"انتشار {'مکث' if PUBLISH_PAUSED else 'جاری'}"
+    )
+
+
+def save_bot_state() -> bool:
+    """ذخیره‌ی وضعیت. شکست خوردنش ربات را نمی‌خواباند، فقط ماندگار نیست."""
+    try:
+        parent = os.path.dirname(BOT_STATE_FILE)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        tmp = f"{BOT_STATE_FILE}.tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(
+                {"enabled": BOT_ENABLED, "publish_paused": PUBLISH_PAUSED},
+                fh, ensure_ascii=False, indent=2,
+            )
+        os.replace(tmp, BOT_STATE_FILE)
+        return True
+    except OSError as exc:
+        logger.warning(f"⚠️ ذخیره‌ی وضعیت ربات ناموفق: {exc}")
+        return False
+
 
 # آدرس فایل‌ها برای *خواندن*؛ SUB_* برای نمایش به کاربر است و ممکن است
 # بعداً به دامنه‌ی دیگری اشاره کند.
@@ -72,11 +122,16 @@ VALID_URL = f"{RAW_BASE}/{VALID_FILE}" if RAW_BASE else ""
 IRAN_URL = f"{RAW_BASE}/{IRAN_FILE}" if RAW_BASE else ""
 STATS_URL = f"{RAW_BASE}/{STATS_FILE}" if RAW_BASE else ""
 INDEX_URL = f"{RAW_BASE}/{INDEX_FILE}" if RAW_BASE else ""
+# پول ذخیره: کانفیگ‌های *تست‌نشده* (از سهم MAX_HTTP_TEST بیرون ماندند).
+# «تست نشد» مساوی «رد شد» نیست؛ این‌ها فقط برای پر کردن سهمیه‌ی خالی‌اند.
+POOL_URL = f"{RAW_BASE}/{POOL_FILE}" if RAW_BASE else ""
 
 CACHE_TTL = 300          # ۵ دقیقه — هم‌اندازه‌ی cache خود raw.githubusercontent
 LIST_LIMIT = 10
 
-_cache: Dict[str, object] = {"configs": [], "iran": [], "stats": {}, "index": {}}
+_cache: Dict[str, object] = {
+    "configs": [], "iran": [], "pool": [], "stats": {}, "index": {},
+}
 _last_fetch: float = 0.0
 # خلاصه‌ی آخرین دوره‌های انتشار — /status ادمین این را نشان می‌دهد.
 _publish_log: List[Dict] = []
@@ -99,8 +154,10 @@ async def fetch_from_github(url: str) -> str:
     except Exception as exc:
         logger.debug(f"خطا دریافت از GitHub: {exc}")
     return ""
+
+
 async def refresh_cache(force: bool = False) -> None:
-    """آپدیت cache از GitHub — چهار فایل با هم.
+    """آپدیت cache از GitHub — پنج فایل با هم.
 
     _last_fetch فقط در صورت موفقیت جلو می‌رود تا یک قطعی موقت شبکه، cache
     خالی را برای ۵ دقیقه قفل نکند.
@@ -110,9 +167,10 @@ async def refresh_cache(force: bool = False) -> None:
     if not force and _cache["configs"] and time.time() - _last_fetch < CACHE_TTL:
         return
 
-    valid_text, iran_text, stats_text, index_text = await asyncio.gather(
+    valid_text, iran_text, pool_text, stats_text, index_text = await asyncio.gather(
         fetch_from_github(VALID_URL),
         fetch_from_github(IRAN_URL),
+        fetch_from_github(POOL_URL),
         fetch_from_github(STATS_URL),
         fetch_from_github(INDEX_URL),
     )
@@ -123,6 +181,8 @@ async def refresh_cache(force: bool = False) -> None:
         ok = True
     if iran_text:
         _cache["iran"] = _lines(iran_text)
+    if pool_text:
+        _cache["pool"] = _lines(pool_text)
     for key, text in (("stats", stats_text), ("index", index_text)):
         if not text:
             continue
@@ -136,7 +196,8 @@ async def refresh_cache(force: bool = False) -> None:
         _last_fetch = time.time()
         logger.info(
             f"🔄 cache: {len(_cache['configs'])} کانفیگ | "
-            f"{len(_cache['iran'])} تأییدشده‌ی ایران"
+            f"{len(_cache['iran'])} تأییدشده‌ی ایران | "
+            f"{len(_cache['pool'])} ذخیره"
         )
 
 
@@ -190,6 +251,46 @@ def load_iran_configs() -> List[str]:
     return [c for c in load_configs() if vless.is_iran_verified(c)]
 
 
+def load_pool_configs() -> List[str]:
+    """پول ذخیره — کانفیگ‌های *تست‌نشده*، نه ردشده.
+
+    این‌ها لایه‌های فرمت/TCP/دسترسی/TLS را پاس کرده‌اند ولی سهم
+    MAX_HTTP_TEST پر شده بود و تونلشان با xray امتحان نشد. فقط برای پر کردن
+    سهمیه‌ی خالیِ دوره استفاده می‌شوند و کارتشان صریح می‌گوید تست‌نشده‌اند.
+    """
+    remote = list(_cache["pool"])  # type: ignore[arg-type]
+    return remote or _read_local(POOL_FILE)
+
+
+def load_publish_pool() -> List[str]:
+    """پول تأییدشده‌ی دوره‌ی انتشار — همه‌ی منابع، بدون فیلتر کشور.
+
+    مشکلی که این تابع حل می‌کند: دوره‌هایی با ۳ کانفیگ پست می‌شد چون عملاً
+    فقط کانفیگ‌های تأییدشده‌ی ایران به انتشار می‌رسید. سهمیه‌ی ۱۰تایی نباید
+    بشکند، پس داخلی و بین‌المللی و دستی همه در یک پول می‌روند و
+    `publisher.rank_key` فقط *ترتیب* را تعیین می‌کند: ایران اول، بعد بقیه.
+
+    ترتیب اضافه‌شدن مهم است: valid.txt پایه است و iran.txt/international.txt
+    فقط چیزهایی را اضافه می‌کنند که در آن نیستند (اگر اجرای آخر ناقص مانده
+    باشد). manual.txt آخر می‌آید چون ادمین آگاهانه اضافه‌اش کرده.
+    """
+    pool: List[str] = []
+    seen: set = set()
+    for group in (
+        load_configs(),
+        load_iran_configs(),
+        _read_local(INTL_FILE),
+        _read_local(MANUAL_FILE),
+    ):
+        for cfg in group:
+            sid = vless.short_id(cfg)
+            if sid in seen:
+                continue
+            seen.add(sid)
+            pool.append(cfg)
+    return pool
+
+
 def load_stats() -> dict:
     """همان منطق load_configs: هرکدام تازه‌تر است."""
     local: dict = {}
@@ -240,27 +341,61 @@ def make_qr(text: str) -> io.BytesIO:
 # ─── دکمه‌های ثابت پایین صفحه ──────────────────────────────
 # درخواست کاربر: دکمه‌ها همان‌جا که کیبورد است بمانند. is_persistent یعنی
 # کیبورد بعد از هر پیام بسته نمی‌شود؛ فقط یک بار در /start فرستادنش کافی است.
+#
+# رنگ‌ها (Bot API 9.4) از src/tg_ui.py می‌آیند و روی PTB قدیمی‌تر خودکار حذف
+# می‌شوند. رنگ هیچ‌وقت تنها حامل معنا نیست — متن هر دکمه خودش گویا است، وگرنه
+# روی کلاینت قدیمی یا برای کاربر کم‌بینا دکمه‌ها از هم قابل تشخیص نبودند.
 
 BTN_BEST = "⭐ بهترین"
 BTN_IRAN = "🇮🇷 مخصوص ایران"
+BTN_COUNTRY = "🌍 انتخاب کشور"
 BTN_RANDOM = "🎲 رندوم"
 BTN_LIST = "📋 لیست"
 BTN_SUB = "🔗 اشتراک"
+BTN_DONATE = "🎁 اهدای کانفیگ"
 BTN_STATS = "📊 آمار"
 BTN_QR = "📷 QR"
 BTN_HELP = "❓ راهنما"
+# ردیف ادمین — فقط برای کسی که در ADMIN_IDS است ساخته می‌شود. اینها همان
+# دستورهای ادمین‌اند، پس اگر کاربر عادی متنشان را دستی تایپ کند، دکوراتور
+# admin_only جلویش را می‌گیرد؛ کیبورد لایه‌ی راحتی است نه لایه‌ی امنیت.
+BTN_A_PUBLISH = "📤 انتشار دستی"
+BTN_A_STATUS = "🖥️ وضعیت"
+BTN_A_DONATIONS = "🎁 صف اهدا"
+BTN_A_TOGGLE = "⏸️ مکث انتشار"
 
-MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [
-        [KeyboardButton(BTN_BEST), KeyboardButton(BTN_IRAN)],
-        [KeyboardButton(BTN_RANDOM), KeyboardButton(BTN_LIST)],
-        [KeyboardButton(BTN_SUB), KeyboardButton(BTN_STATS)],
-        [KeyboardButton(BTN_QR), KeyboardButton(BTN_HELP)],
-    ],
-    resize_keyboard=True,
-    is_persistent=True,
-    input_field_placeholder="یک دکمه را بزن یا /help",
-)
+_USER_ROWS = [
+    [tg_ui.kb(BTN_BEST, tg_ui.SUCCESS), tg_ui.kb(BTN_IRAN, tg_ui.PRIMARY)],
+    [tg_ui.kb(BTN_COUNTRY, tg_ui.PRIMARY), tg_ui.kb(BTN_RANDOM)],
+    [tg_ui.kb(BTN_LIST), tg_ui.kb(BTN_SUB, tg_ui.PRIMARY)],
+    [tg_ui.kb(BTN_DONATE, tg_ui.SUCCESS), tg_ui.kb(BTN_STATS)],
+    [tg_ui.kb(BTN_QR), tg_ui.kb(BTN_HELP)],
+]
+
+_ADMIN_ROWS = [
+    [tg_ui.kb(BTN_A_PUBLISH, tg_ui.DANGER), tg_ui.kb(BTN_A_STATUS)],
+    [tg_ui.kb(BTN_A_DONATIONS), tg_ui.kb(BTN_A_TOGGLE, tg_ui.DANGER)],
+]
+
+
+def _keyboard(rows) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        rows,
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="یک دکمه را بزن یا /help",
+    )
+
+
+MAIN_KEYBOARD = _keyboard(_USER_ROWS)
+ADMIN_KEYBOARD = _keyboard(_USER_ROWS + _ADMIN_ROWS)
+
+
+def keyboard_for(uid: Optional[int]) -> ReplyKeyboardMarkup:
+    """کیبورد بر اساس نقش — ادمین دو ردیف اضافه می‌بیند."""
+    return ADMIN_KEYBOARD if is_admin(uid) else MAIN_KEYBOARD
+
+
 async def reply(update: Update, text: str, **kwargs) -> None:
     """پاسخ امن: پیام ممکن است edit شده یا از callback آمده باشد."""
     message = update.effective_message
@@ -311,6 +446,8 @@ def admin_only(func: Callable) -> Callable:
         return await func(update, context)
 
     return wrapper
+
+
 def format_config_list(
     configs: List[str], title: str, max_n: int = LIST_LIMIT
 ) -> str:
@@ -331,10 +468,11 @@ def format_config_list(
 def card_keyboard(index: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📷 QR", callback_data=f"qr_{index}"),
-            InlineKeyboardButton("▶️ بعدی", callback_data=f"get_next_{index + 1}"),
+            tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
+            tg_ui.ikb("▶️ بعدی", tg_ui.PRIMARY,
+                      callback_data=f"get_next_{index + 1}"),
         ],
-        [InlineKeyboardButton("🔗 لینک اشتراک", callback_data="sub")],
+        [tg_ui.ikb("🔗 لینک اشتراک", tg_ui.SUCCESS, callback_data="sub")],
     ])
 
 
@@ -364,7 +502,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  🕐 آخرین آپدیت: {ts or 'نامشخص'}\n\n"
         f"👇 از دکمه‌های پایین استفاده کن — /help برای همه‌ی دستورها."
     )
-    await reply(update, text, reply_markup=MAIN_KEYBOARD)
+    if is_admin(user.id if user else None):
+        text += "\n\n🛠️ *دسترسی ادمین فعال* — دو ردیف آخر کیبورد مخصوص شماست."
+    await reply(update, text, reply_markup=keyboard_for(user.id if user else None))
+
+
 @user_command
 async def cmd_get(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بهترین کانفیگ: تأییدشده‌ی ایران با کم‌ترین تأخیر تونل."""
@@ -428,8 +570,8 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         card(configs[index], index + 1, len(configs)),
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎲 یکی دیگه", callback_data="random"),
-            InlineKeyboardButton("📷 QR", callback_data=f"qr_{index}"),
+            tg_ui.ikb("🎲 یکی دیگه", tg_ui.PRIMARY, callback_data="random"),
+            tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
         ]]),
     )
 
@@ -508,7 +650,7 @@ async def cmd_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply(
         update, "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📷 QR لینک", callback_data="qr_sub")]]
+            [[tg_ui.ikb("📷 QR لینک", tg_ui.PRIMARY, callback_data="qr_sub")]]
         ),
     )
 @user_command
@@ -571,12 +713,217 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌍 *کشورها:* {country_text or 'نامشخص'}"
     )
     await reply(update, text)
+
+
+# ─── انتخاب کشور ──────────────────────────────────────────
+# درخواست کاربر: «امکان انتخاب کانفیگ بر اساس موقعیت/کشور». برچسب کشور از
+# لایه‌ی ۶ (Geo) در خود fragment نشسته، پس این‌جا فقط گروه‌بندی است — هیچ
+# درخواست شبکه‌ای لازم نیست.
+
+COUNTRY_BTN_ROWS = 4        # ۴ ردیف × ۳ ستون = حداکثر ۱۲ کشور در یک پیام
+
+
+def country_counts(configs: List[str]) -> Dict[str, int]:
+    """کد کشور → تعداد، از پرتعدادترین. بی‌برچسب‌ها شمرده نمی‌شوند."""
+    counts: Dict[str, int] = {}
+    for cfg in configs:
+        code = vless.get_country(cfg)
+        if code and len(code) == 2 and code.isalpha() and code != "XX":
+            counts[code] = counts.get(code, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def country_keyboard(counts: Dict[str, int]) -> InlineKeyboardMarkup:
+    """سه دکمه در هر ردیف — بیشتر از این روی موبایل متن دکمه بریده می‌شود."""
+    buttons = [
+        tg_ui.ikb(f"{renderer.flag(code)} {code} ({n})",
+                  tg_ui.PRIMARY if index < 3 else None,
+                  callback_data=f"co_{code}")
+        for index, (code, n) in enumerate(list(counts.items())[:COUNTRY_BTN_ROWS * 3])
+    ]
+    rows = [buttons[i:i + 3] for i in range(0, len(buttons), 3)]
+    rows.append([tg_ui.ikb("🇮🇷 تأییدشده از ایران", tg_ui.SUCCESS,
+                           callback_data="iran")])
+    return InlineKeyboardMarkup(rows)
+
+
+@user_command
+async def cmd_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """`/country` فهرست کشورها، `/country DE` کانفیگ‌های آن کشور."""
+    if context.args:
+        await show_country(update, context.args[0])
+        return
+    counts = country_counts(load_configs())
+    if not counts:
+        await reply(update, "⚠️ فعلاً کانفیگی با برچسب کشور نداریم.")
+        return
+    shown = list(counts.items())[:COUNTRY_BTN_ROWS * 3]
+    lines = [
+        "🌍 *انتخاب بر اساس کشور*",
+        f"{len(counts)} کشور | {sum(counts.values())} کانفیگ برچسب‌دار",
+        "",
+        " | ".join(f"{renderer.flag(c)} {c} {n}" for c, n in shown),
+        "",
+        "👇 کشور را انتخاب کن — یا `/country DE` را بنویس.",
+    ]
+    if len(counts) > len(shown):
+        lines.append(f"_… و {len(counts) - len(shown)} کشور دیگر._")
+    await reply(update, "\n".join(lines), reply_markup=country_keyboard(counts))
+
+
+async def show_country(update: Update, raw_code: str) -> None:
+    """کانفیگ‌های یک کشور + لینک اشتراک همان کشور.
+
+    کد از ورودی کاربر یا callback_data می‌آید، پس اعتبارسنجی می‌شود؛
+    `config.country_sub_url` هم خودش دوباره بررسی می‌کند (مسیر `../`).
+    """
+    code = (raw_code or "").strip().upper()[:2]
+    if len(code) != 2 or not code.isalpha():
+        await reply(update, "❌ کد کشور دو حرف انگلیسی است. مثال: `/country DE`")
+        return
+    configs = [c for c in sort_best(load_configs()) if vless.get_country(c) == code]
+    if not configs:
+        counts = country_counts(load_configs())
+        await reply(
+            update,
+            f"❌ برای {renderer.flag(code)} *{code}* کانفیگی نداریم.\n"
+            + (" | ".join(f"{c} {n}" for c, n in list(counts.items())[:8])
+               if counts else ""),
+            reply_markup=country_keyboard(counts) if counts else None,
+        )
+        return
+    text = format_config_list(configs, f"{renderer.flag(code)} {code}")
+    sub = country_sub_url(code)
+    if sub:
+        text += f"\n\n🔗 *لینک اشتراک {code}:*\n{tg_md.code(sub)}"
+    await reply(update, text, reply_markup=InlineKeyboardMarkup(
+        [[tg_ui.ikb("🌍 کشور دیگر", tg_ui.PRIMARY, callback_data="countries")]]
+    ))
+
+
+# ─── اهدای کانفیگ توسط کاربران ─────────────────────────────
+# درخواست کاربر: بخش اهدا، و اهدایی‌ها *اضافه بر* سهمیه‌ی ۱۰تایی هر دوره پست
+# شوند (PUBLISH_DONATED_COUNT در هر دوره) و هیچ کانفیگی بیش از یک بار نرود.
+#
+# حریم خصوصی (خواسته‌ی صریح کاربر: «داده‌ی هیچ کاربری لو نرود»):
+#   • شناسه‌ی تلگرام هیچ‌جا روی دیسک نمی‌رود — فقط hash نمکی‌اش برای سهمیه.
+#   • اسمی که اهداکننده روی کانفیگ گذاشته دور ریخته می‌شود؛ کانال اسم خودش
+#     را می‌سازد. پس متن کاربر هیچ‌وقت در پیام رندرشده نمی‌نشیند.
+#   • متن اهدا لاگ نمی‌شود؛ فقط شمارش.
+
+DONATE_FLAG = "donate_mode"        # فقط در حافظه‌ی PTB، روی دیسک نمی‌رود
+DONATE_PENDING = "donate_pending"
+
+
+def donate_intro() -> str:
+    lines = [
+        "🎁 *اهدای کانفیگ*",
+        "─" * 26,
+        "کانفیگ سالمی داری؟ بفرست تا در کانال با برچسب «اهدایی» منتشر شود.",
+        "",
+        f"📤 هر دوره *{PUBLISH_DONATED_COUNT}* کانفیگ اهدایی — *اضافه بر* "
+        f"{PUBLISH_COUNT} کانفیگ همیشگی. بقیه در صف می‌مانند.",
+        "🔁 هر کانفیگ *فقط یک بار* پست می‌شود.",
+        "",
+        "📋 *قواعد:*",
+        f"  • حداکثر {DONATE_MAX_PER_MSG} کانفیگ در هر پیام"
+        + (f"، {DONATE_MAX_PER_DAY} در روز" if DONATE_MAX_PER_DAY else ""),
+        "  • فقط `vless://` — با دامنه یا IP عمومی",
+        "  • تکراری و کانفیگ خراب خودکار رد می‌شود",
+        "",
+        "🔒 *حریم خصوصی:* شناسه‌ی تلگرامت ذخیره نمی‌شود (فقط hash برای سهمیه) "
+        "و اسمی که روی کانفیگ گذاشته‌ای دور ریخته می‌شود.",
+        "",
+        "👇 حالا کانفیگ‌ها را در یک پیام بفرست (چند خط اشکالی ندارد).",
+    ]
+    return "\n".join(lines)
+
+
+@user_command
+async def cmd_donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not DONATE_ENABLED:
+        await reply(update, "⚠️ بخش اهدا موقتاً بسته است.")
+        return
+    inline = " ".join(context.args) if context.args else ""
+    if vless.extract_configs(inline):
+        await process_donation(update, context, inline)
+        return
+    if context.user_data is not None:
+        context.user_data[DONATE_FLAG] = True
+    queued = donations.queued_count()
+    text = donate_intro()
+    if queued:
+        text += f"\n\n🗂 صف فعلی: *{queued}* کانفیگ در انتظار انتشار."
+    await reply(update, text)
+
+
+async def process_donation(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
+    """اعتبارسنجی و افزودن به صف. هیچ‌جا متن کاربر لاگ نمی‌شود."""
+    user = update.effective_user
+    if not DONATE_ENABLED:
+        await reply(update, "⚠️ بخش اهدا موقتاً بسته است.")
+        return
+    # سقف استخراج: پیام غول‌آسا نباید حلقه‌ی اعتبارسنجی را طولانی کند.
+    configs = vless.extract_configs(text, limit=max(1, DONATE_MAX_PER_MSG) * 3)
+    if not configs:
+        await reply(
+            update,
+            "❌ لینک `vless://` در پیامت پیدا نشد.\n"
+            "هر کانفیگ را در یک خط بفرست.",
+        )
+        return
+
+    result = donations.add(configs, user_id=user.id if user else None)
+    if context.user_data is not None:
+        context.user_data.pop(DONATE_FLAG, None)
+        context.user_data.pop(DONATE_PENDING, None)
+
+    if result["blocked"]:
+        await reply(
+            update,
+            f"⏳ {tg_md.strip_md(result['blocked'], 120)}\n"
+            f"🗂 صف فعلی: {result['queued_total']} کانفیگ.",
+        )
+        return
+
+    lines = ["🎁 *نتیجه‌ی اهدا*", ""]
+    if result["added"]:
+        lines.append(f"✅ پذیرفته شد: *{result['added']}*")
+    if result["duplicate"]:
+        lines.append(f"🔁 تکراری (قبلاً در صف/منتشرشده): {result['duplicate']}")
+    if result["invalid"]:
+        lines.append(f"❌ نامعتبر: {result['invalid']}")
+    reasons = result["reasons"] if isinstance(result["reasons"], dict) else {}
+    for reason, n in reasons.items():
+        lines.append(f"   • {tg_md.strip_md(reason, 60)} ×{n}")
+    lines.append("")
+    lines.append(f"🗂 صف: *{result['queued_total']}* کانفیگ در انتظار")
+    if result["added"]:
+        cycles = int(result["queued_total"]) // max(1, PUBLISH_DONATED_COUNT)
+        lines.append(
+            f"📤 هر {PUBLISH_INTERVAL_MIN} دقیقه {PUBLISH_DONATED_COUNT} تا "
+            f"منتشر می‌شود" + (f" (~{cycles} دوره)" if cycles > 1 else "")
+        )
+        lines.append("🙏 ممنون — هر کانفیگ فقط یک بار پست می‌شود.")
+    else:
+        lines.append("_چیزی به صف اضافه نشد._")
+    await reply(update, "\n".join(lines))
+    # فقط شمارش لاگ می‌شود، نه محتوا و نه شناسه‌ی کاربر.
+    logger.info(
+        f"🎁 اهدا: +{result['added']} | تکراری {result['duplicate']} | "
+        f"نامعتبر {result['invalid']}"
+    )
+
+
 @user_command
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "📖 *راهنمای کامل*\n\n"
         "🔹 /get — بهترین کانفیگ\n"
         "🔹 /iran — فقط تأییدشده‌های داخل ایران 🇮🇷\n"
+        "🔹 /country [کد] — انتخاب بر اساس کشور 🌍\n"
         "🔹 /list — لیست همه‌ی کانفیگ‌ها\n"
         "🔹 /reality — فقط Reality\n"
         "🔹 /tls — فقط TLS\n"
@@ -584,16 +931,43 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /qr [شماره] — QR code کانفیگ\n"
         "🔹 /ping — تأخیر کانفیگ‌ها\n"
         "🔹 /sub — لینک اشتراک\n"
-        "🔹 /stats — آمار کامل pipeline\n\n"
+        "🔹 /donate — اهدای کانفیگ به کانال 🎁\n"
+        "🔹 /stats — آمار کامل pipeline\n"
+        "🔹 /whoami — شناسه و نقش من\n\n"
         "💡 *کانفیگ‌ها از ۷ لایه رد شده‌اند:*\n"
         "فرمت → حذف تکراری → TCP → *دسترسی از ایران* → TLS → Geo → HTTP واقعی\n\n"
         "🇮🇷 لایه‌ی «دسترسی از ایران» با نودهای ایرانی check-host تست می‌شود؛ "
         "بقیه‌ی لایه‌ها از سرور آمریکا اجرا می‌شوند و فقط سالم بودن سرور را "
         "می‌سنجند. کانفیگ‌های /iran بالاترین شانس باز شدن را دارند.\n\n"
         f"🔁 کانال هر {PUBLISH_INTERVAL_MIN} دقیقه {PUBLISH_COUNT} کانفیگ تازه "
-        "می‌گذارد و پیام آخر هر دسته لینک اشتراک است."
+        f"می‌گذارد (+ {PUBLISH_DONATED_COUNT} اهدایی) و پیام آخر هر دسته لینک "
+        "اشتراک است."
     )
-    await reply(update, text, reply_markup=MAIN_KEYBOARD)
+    user = update.effective_user
+    if is_admin(user.id if user else None):
+        text += "\n\n" + admin_help()
+    await reply(update, text, reply_markup=keyboard_for(user.id if user else None))
+
+
+def admin_help() -> str:
+    """بخش ادمینِ /help — فقط برای ادمین به متن اضافه می‌شود.
+
+    دستورهای ادمین در setup_commands هم فقط به chat خود ادمین‌ها معرفی
+    می‌شوند، پس کاربر عادی نه در منوی تلگرام می‌بیندشان و نه اینجا.
+    """
+    return (
+        "🛠️ *دستورهای ادمین*\n"
+        "🔸 /publish — یک دوره‌ی انتشار همین حالا\n"
+        "🔸 /cycle — گزارش ۵ دوره‌ی آخر\n"
+        "🔸 /status — وضعیت ربات و پول‌ها\n"
+        "🔸 /health — چرا آخرین اجرا خروجی نداشت\n"
+        "🔸 /pause و /resume — مکث/ادامه‌ی *انتشار خودکار*\n"
+        "🔸 /on و /off — روشن/خاموش کردن پاسخ به کاربران\n"
+        "🔸 /donations — صف اهدا (+ `requeue` و `purge`)\n"
+        "🔸 /run — اجرای pipeline در GitHub Actions\n"
+        "🔸 /add و /test — افزودن و تست دستی کانفیگ\n"
+        "🔸 /whoami — شناسه و نقش خودت"
+    )
 
 
 # ─── دکمه‌های ثابت → همان هندلرها ──────────────────────────
@@ -601,13 +975,20 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 BUTTON_ROUTES: Dict[str, Callable] = {
     BTN_BEST: cmd_get,
     BTN_IRAN: cmd_iran,
+    BTN_COUNTRY: cmd_country,
     BTN_RANDOM: cmd_random,
     BTN_LIST: cmd_list,
     BTN_SUB: cmd_sub,
+    BTN_DONATE: cmd_donate,
     BTN_STATS: cmd_stats,
     BTN_QR: cmd_qr,
     BTN_HELP: cmd_help,
 }
+
+# دکمه‌های ادمین به هندلرهایی وصل می‌شوند که پایین‌تر تعریف شده‌اند، پس این
+# نقشه بعد از تعریفشان پر می‌شود (پایین فایل). handle_button فقط در زمان
+# اجرا نگاهش می‌کند، پس خالی بودنش در لحظه‌ی import مشکلی نیست.
+ADMIN_ROUTES: Dict[str, Callable] = {}
 
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -615,36 +996,95 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     دکمه‌ی ReplyKeyboard یک پیام متنی معمولی می‌فرستد (نه callback)، پس
     مسیردهی روی متن انجام می‌شود.
+
+    پیامی که لینک vless دارد دو معنا می‌تواند داشته باشد (اهدا، یا تست ادمین)،
+    پس هیچ‌وقت خودکار اهدا نمی‌شود: یا کاربر قبلش دکمه‌ی اهدا را زده (پرچم
+    donate_mode)، یا دکمه‌ی تأیید را می‌بیند. اهدای ناخواسته یعنی کانفیگ
+    شخصیِ کسی در کانال عمومی — همان چیزی که نباید بشود.
+
+    دکمه‌های ادمین هم از همین‌جا رد می‌شوند ولی هندلرشان `@admin_only` است؛
+    اگر کاربر عادی متنشان را دستی تایپ کند، همان «⛔ فقط ادمین» را می‌گیرد.
     """
     message = update.effective_message
     text = (message.text or "").strip() if message else ""
-    handler = BUTTON_ROUTES.get(text)
+    handler = BUTTON_ROUTES.get(text) or ADMIN_ROUTES.get(text)
     if handler is not None:
         await handler(update, context)
         return
-    if text.lower().startswith("vless://"):
+
+    if vless.extract_configs(text):
+        armed = bool(context.user_data and context.user_data.get(DONATE_FLAG))
+        if armed and DONATE_ENABLED:
+            await process_donation(update, context, text)
+            return
+        if DONATE_ENABLED:
+            # متن فقط در حافظه‌ی همین کاربر می‌ماند تا اگر تأیید کرد استفاده
+            # شود؛ روی دیسک نمی‌رود و با restart از بین می‌رود.
+            if context.user_data is not None:
+                context.user_data[DONATE_PENDING] = text[:8000]
+            found = len(vless.extract_configs(text))
+            await reply(
+                update,
+                f"📥 *{found}* لینک `vless://` در پیامت دیدم.\n"
+                "می‌خواهی به کانال اهدا شود؟",
+                reply_markup=InlineKeyboardMarkup([[
+                    tg_ui.ikb("🎁 بله، اهدا کن", tg_ui.SUCCESS,
+                              callback_data="donate_go"),
+                    tg_ui.ikb("✖️ نه", tg_ui.DANGER, callback_data="donate_no"),
+                ]]),
+            )
+            return
         await reply(update, "🧪 برای تست یک کانفیگ: `/test <لینک>` (فقط ادمین)")
         return
+
     await reply(update, "👇 از دکمه‌های پایین استفاده کن یا /help را بزن.",
-                reply_markup=MAIN_KEYBOARD)
+                reply_markup=keyboard_for(
+                    update.effective_user.id if update.effective_user else None))
+
+
 # ─── انتشار در کانال ──────────────────────────────────────
 
 async def _publish_once(bot, trigger: str = "auto") -> Dict:
-    """یک دوره‌ی انتشار: ۱۰ کارت + پیام لینک اشتراک.
+    """یک دوره‌ی انتشار: ۱۰ کارت + اهدایی‌ها + پیام لینک اشتراک.
 
     هم حلقه‌ی خودکار و هم /publish از همین می‌گذرند تا رفتارشان یکی بماند
     (چرخش، cooldown و ثبت وضعیت همه در publisher انجام می‌شود).
+
+    سه منبع به publisher داده می‌شود:
+      • پول تأییدشده (`load_publish_pool`) — داخلی + بین‌المللی با هم. اینجا
+        هیچ فیلتر «فقط ایران» نیست؛ سهمیه‌ی ۱۰تایی نباید بشکند.
+      • پول ذخیره (`load_pool_configs`) — تست‌نشده‌ها، فقط اگر سهمیه کم آمد.
+      • صف اهدای کاربران — *اضافه بر* سهمیه، حداکثر PUBLISH_DONATED_COUNT.
+
+    اهدایی‌ها فقط بعد از ارسال *موفق* sent علامت می‌خورند؛ ناموفق‌ها در وضعیت
+    taken می‌مانند و خودکار دوباره پست نمی‌شوند — قرارداد «حداکثر یک بار».
     """
     empty: Dict = {"selected": 0, "sent": 0, "failed": 0, "ids": []}
     await refresh_cache(force=True)
-    configs = load_configs()
-    if not configs:
+    configs = load_publish_pool()
+    reserve = load_pool_configs() if PUBLISH_FILL_FROM_POOL else []
+    donated = (
+        donations.take_for_cycle(PUBLISH_DONATED_COUNT) if DONATE_ENABLED else []
+    )
+    if not configs and not reserve and not donated:
         logger.warning("⚠️ دوره‌ی انتشار رد شد — پول کانفیگ خالی است")
         return {**empty, "trigger": trigger, "at": _now_utc()}
 
-    result = await Publisher(bot=bot).publish_batch(configs, load_stats())
+    result = await Publisher(bot=bot).publish_batch(
+        configs, load_stats(), reserve=reserve, donated=donated,
+    )
+
+    # ثبت اهدایی‌های ارسال‌شده. اگر این ذخیره نشود، دوره‌ی بعد همان کانفیگ
+    # دوباره برداشته نمی‌شود (taken مانده) پس تکرار پیش نمی‌آید.
+    sent_donations = [c for c in result.get("donated_sent", []) if isinstance(c, str)]
+    if sent_donations:
+        donations.mark_sent(sent_donations)
+
     result["trigger"] = trigger
     result["at"] = _now_utc()
+    result["pool_size"] = len(configs)
+    result["reserve_size"] = len(reserve)
+    result["donated"] = len(sent_donations)
     _publish_log.append(dict(result))
     del _publish_log[:-5]
     return result
@@ -659,12 +1099,21 @@ async def auto_publish_loop(app: Application) -> None:
 
     APScheduler نصب نیست (و JobQueue تلگرام به آن نیاز دارد)؛ این حلقه هیچ
     وابستگی‌ای اضافه نمی‌کند. یک استثنا در یک دوره، حلقه را نمی‌کشد.
+
+    دو دکمه‌ی ادمین می‌توانند جلویش را بگیرند و حلقه *زنده* بماند: خاموشی کل
+    ربات (BOT_ENABLED) و مکث انتشار (PUBLISH_PAUSED). حلقه کشته نمی‌شود چون
+    /resume باید بدون restart کار کند؛ فقط این تیک را رد می‌کند.
     """
     interval = max(1, PUBLISH_INTERVAL_MIN) * 60
     await asyncio.sleep(20)   # تا اتصال ربات و اولین cache کامل شود
     while True:
         try:
-            await _publish_once(app.bot, "auto")
+            if not BOT_ENABLED:
+                logger.info("⏸️ تیک انتشار رد شد — ربات خاموش است")
+            elif PUBLISH_PAUSED:
+                logger.info("⏸️ تیک انتشار رد شد — انتشار در حالت مکث")
+            else:
+                await _publish_once(app.bot, "auto")
         except asyncio.CancelledError:
             logger.info("⏹️ حلقه‌ی انتشار متوقف شد")
             raise
@@ -680,12 +1129,23 @@ async def cmd_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """یک دوره‌ی انتشار دستی، بدون انتظار تا تیک بعدی."""
     await reply(update, "📤 در حال انتشار یک دسته...")
     result = await _publish_once(context.bot, "دستی")
-    await reply(
-        update,
+    lines = [
         f"{'✅' if result['sent'] else '⚠️'} انتشار: "
-        f"{result['selected']} کانفیگ انتخاب شد | "
+        f"{result['selected']}/{PUBLISH_COUNT} کانفیگ انتخاب شد | "
         f"{result['sent']} پیام موفق | {result['failed']} ناموفق",
-    )
+    ]
+    if result.get("from_pool"):
+        lines.append(f"🗃 {result['from_pool']} از پول ذخیره (تست‌نشده)")
+    if result.get("donated"):
+        lines.append(f"🎁 {result['donated']} کانفیگ اهدایی")
+    if result.get("quota_short"):
+        lines.append(
+            f"⚠️ سهمیه {result['quota_short']} تا کم آمد — پول تأییدشده "
+            f"{result.get('pool_size', 0)}، ذخیره {result.get('reserve_size', 0)}"
+        )
+    await reply(update, "\n".join(lines))
+
+
 @admin_only
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """trigger کردن workflow جمع‌آوری."""
@@ -736,7 +1196,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"({len(_cache['configs'])} از گیت‌هاب)",
         f"📇 index.json: {'✅ schema ' + str(index.get('schema')) if index else '❌'}",
         f"🔁 انتشار خودکار: "
-        f"{'🟢 هر ' + str(PUBLISH_INTERVAL_MIN) + ' دقیقه' if AUTO_PUBLISH else '🔴 خاموش'}",
+        f"{'🟢 هر ' + str(PUBLISH_INTERVAL_MIN) + ' دقیقه' if AUTO_PUBLISH else '🔴 خاموش'}"
+        f"{' — ⏸️ مکث دستی' if PUBLISH_PAUSED else ''}",
+        f"🎁 صف اهدا: {donations.queued_count()} در انتظار",
     ]
     if _publish_log:
         lines.append("")
@@ -747,18 +1209,263 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{item.get('sent', 0)}✅ / {item.get('failed', 0)}❌"
             )
     await reply(update, "\n".join(lines))
+
+
+def _state_note(saved: bool) -> str:
+    """اگر ذخیره نشد، ادمین باید بداند که با restart برمی‌گردد."""
+    return "" if saved else "\n⚠️ روی دیسک ذخیره نشد — با restart به حالت قبل برمی‌گردد."
+
+
 @admin_only
 async def cmd_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """روشن کردن پاسخ به کاربران عادی (ادمین همیشه دسترسی دارد)."""
     global BOT_ENABLED
     BOT_ENABLED = True
-    await reply(update, "🟢 ربات روشن شد!")
+    saved = save_bot_state()
+    logger.info("🟢 ربات روشن شد (دستور ادمین)")
+    await reply(update, "🟢 ربات روشن شد!" + _state_note(saved))
 
 
 @admin_only
 async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """خاموش کردن پاسخ به کاربران عادی.
+
+    انتشار خودکار هم متوقف می‌شود (حلقه BOT_ENABLED را می‌بیند) ولی /publish
+    دستی کار می‌کند. برای مکثِ فقط‌انتشار، /pause سبک‌تر است.
+    """
     global BOT_ENABLED
     BOT_ENABLED = False
-    await reply(update, "🔴 ربات خاموش شد!")
+    saved = save_bot_state()
+    logger.info("🔴 ربات خاموش شد (دستور ادمین)")
+    await reply(
+        update,
+        "🔴 ربات خاموش شد — کاربران عادی پاسخ نمی‌گیرند و انتشار خودکار هم "
+        "متوقف است.\nدسترسی خودت باز است: /on برای برگشت." + _state_note(saved),
+    )
+
+
+@admin_only
+async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مکث انتشار خودکار — ربات به کاربران پاسخ می‌دهد."""
+    global PUBLISH_PAUSED
+    PUBLISH_PAUSED = True
+    saved = save_bot_state()
+    logger.info("⏸️ انتشار خودکار مکث شد (دستور ادمین)")
+    await reply(
+        update,
+        "⏸️ انتشار خودکار مکث شد. ربات به کاربران پاسخ می‌دهد و /publish "
+        "دستی هم کار می‌کند.\n/resume برای ادامه." + _state_note(saved),
+    )
+
+
+@admin_only
+async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ادامه‌ی انتشار خودکار از تیک بعدی."""
+    global PUBLISH_PAUSED
+    PUBLISH_PAUSED = False
+    saved = save_bot_state()
+    logger.info("▶️ انتشار خودکار ادامه یافت (دستور ادمین)")
+    await reply(
+        update,
+        f"▶️ انتشار خودکار ادامه یافت — تیک بعدی حداکثر تا "
+        f"{PUBLISH_INTERVAL_MIN} دقیقه.\nبرای انتشار فوری: /publish"
+        + _state_note(saved),
+    )
+
+
+@admin_only
+async def cmd_toggle_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دکمه‌ی «مکث/ادامه» — یک دکمه برای هر دو حالت."""
+    if PUBLISH_PAUSED:
+        await cmd_resume(update, context)
+    else:
+        await cmd_pause(update, context)
+
+
+async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """شناسه و نقش — تنها راه امن برای پیدا کردن مقدار ADMIN_IDS.
+
+    عمداً بدون @admin_only: کاربر عادی هم باید بتواند شناسه‌ی خودش را
+    ببیند (مثلاً برای درخواست دسترسی). فقط شناسه‌ی *خودش* را می‌بیند.
+    """
+    user = update.effective_user
+    uid = user.id if user else None
+    admin = is_admin(uid)
+    lines = [
+        "🪪 *شناسه‌ی تو*",
+        f"🆔 {tg_md.code(str(uid) if uid else '—')}",
+        f"👤 نقش: {'🛠️ ادمین' if admin else '🙋 کاربر عادی'}",
+    ]
+    if not admin:
+        lines.append("")
+        lines.append(
+            "_برای دسترسی ادمین، همین شناسه باید در ADMIN_IDS سرور اضافه شود._"
+        )
+    await reply(update, "\n".join(lines))
+
+
+@admin_only
+async def cmd_donations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """آمار صف اهدا + دو عمل نگهداری.
+
+    `/donations requeue` فقط برای وقتی است که پروسه بین برداشت و ارسال مرده
+    باشد؛ خودکار نیست چون ممکن است واقعاً پست شده باشد و قرارداد «حداکثر یک
+    بار» بشکند. `/donations purge [n]` رکوردهای ارسال‌شده‌ی قدیمی را هرس
+    می‌کند (خودِ کانفیگ‌ها در کانال می‌مانند).
+    """
+    args = context.args or []
+    action = (args[0].lower() if args else "")
+
+    if action == "requeue":
+        moved = donations.requeue_taken()
+        logger.info(f"🎁 برگشت به صف: {moved}")
+        await reply(
+            update,
+            f"↩️ {moved} کانفیگ از «برداشته‌شده» به صف برگشت.\n"
+            "_اگر واقعاً پست شده بودند، دوباره پست می‌شوند — با احتیاط._",
+        )
+        return
+
+    if action == "purge":
+        keep = 500
+        if len(args) > 1 and args[1].isdigit():
+            keep = max(0, int(args[1]))
+        removed = donations.purge_sent(keep=keep)
+        logger.info(f"🎁 هرس رکوردهای ارسال‌شده: {removed} (نگه‌داشت {keep})")
+        await reply(update, f"🧹 {removed} رکورد ارسال‌شده حذف شد (نگه‌داشت {keep}).")
+        return
+
+    stats = donations.stats()
+    lines = [
+        "🎁 *صف اهدا*",
+        "",
+        f"⏳ در انتظار: {stats['queued']}",
+        f"📤 برداشته‌شده (ارسال‌نشده): {stats['taken']}",
+        f"✅ ارسال‌شده: {stats['sent']}",
+        f"🗂 کل رکوردها: {stats['total']}",
+        f"🙋 اهداکننده‌ها: {stats['donors']} (هش‌شده — شناسه ذخیره نمی‌شود)",
+        f"🔁 دوره تا خالی شدن صف: {stats['cycles_left']} "
+        f"({PUBLISH_DONATED_COUNT} در هر دوره)",
+        "",
+        f"وضعیت اهدا: {'🟢 باز' if DONATE_ENABLED else '🔴 بسته'} | "
+        f"سقف روزانه هر کاربر: {DONATE_MAX_PER_DAY}",
+        "",
+        "_دستورها:_ `/donations requeue` — `/donations purge [تعداد نگه‌داشت]`",
+    ]
+    await reply(update, "\n".join(lines))
+
+
+@admin_only
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """سلامت منابع — «کدام منبع مرده است».
+
+    ساختار را `src/health.py::snapshot` می‌نویسد: by_kind، dead_sources،
+    top_sources. اول از گیت‌هاب می‌خوانیم چون سرور ربات همان فایل‌سیستم
+    رانر نیست؛ اگر نبود، نسخه‌ی محلی.
+    """
+    text = ""
+    if RAW_BASE:
+        text = await fetch_from_github(f"{RAW_BASE}/{HEALTH_FILE}")
+    if not text:
+        try:
+            with open(HEALTH_FILE, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            text = ""
+    if not text:
+        await reply(update, "❔ فایل سلامت پیدا نشد — هنوز اجرایی ثبت نشده.")
+        return
+    try:
+        data = json.loads(text)
+    except ValueError:
+        await reply(update, "⚠️ فایل سلامت خوانا نیست (JSON معتبر نبود).")
+        return
+    if not isinstance(data, dict):
+        await reply(update, "⚠️ ساختار فایل سلامت غیرمنتظره بود.")
+        return
+
+    lines = [
+        "🩺 *سلامت منابع*",
+        "",
+        f"🕐 {tg_md.code(str(data.get('updated_at', '—'))[:19])}",
+    ]
+
+    by_kind = data.get("by_kind")
+    if isinstance(by_kind, dict) and by_kind:
+        lines.append("")
+        total_dead = 0
+        for kind, bucket in by_kind.items():
+            if not isinstance(bucket, dict):
+                continue
+            dead = int(bucket.get("dead", 0) or 0)
+            total_dead += dead
+            lines.append(
+                f"📡 *{tg_md.strip_md(kind, 20)}*: {bucket.get('ok', 0)}✅ "
+                f"{dead}❌ از {bucket.get('sources', 0)} منبع — "
+                f"{bucket.get('configs', 0)} کانفیگ"
+            )
+        if total_dead:
+            lines.append(f"\n💀 مجموع منابع مرده: {total_dead}")
+
+    dead_sources = data.get("dead_sources")
+    if isinstance(dead_sources, list) and dead_sources:
+        lines.append("")
+        lines.append("💀 *منابع مرده* (۱۰ مورد اول):")
+        for item in dead_sources[:10]:
+            if not isinstance(item, dict):
+                continue
+            name = tg_md.strip_md(str(item.get("name", "?")), 60)
+            err = tg_md.strip_md(str(item.get("error", "")), 60)
+            lines.append(f"  • {name} — {err}")
+        if len(dead_sources) > 10:
+            lines.append(f"  _… و {len(dead_sources) - 10} منبع دیگر_")
+
+    top = data.get("top_sources")
+    if isinstance(top, list) and top:
+        lines.append("")
+        lines.append("🏆 *پربارترین منابع:*")
+        for item in top[:5]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"  • {tg_md.strip_md(str(item.get('name', '?')), 60)}: "
+                f"{item.get('count', 0)}"
+            )
+    await reply(update, "\n".join(lines))
+
+
+@admin_only
+async def cmd_cycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """گزارش دوره‌های انتشار — همان چیزی که مشکل «۳ کانفیگ» را نشان می‌دهد."""
+    lines = [
+        "🔁 *دوره‌های انتشار*",
+        "",
+        f"⚙️ خودکار: {'🟢 فعال' if AUTO_PUBLISH else '🔴 غیرفعال'}"
+        f"{' — ⏸️ مکث' if PUBLISH_PAUSED else ''}"
+        f" | هر {PUBLISH_INTERVAL_MIN} دقیقه",
+        f"🎯 سهمیه: {PUBLISH_COUNT} کانفیگ + {PUBLISH_DONATED_COUNT} اهدایی",
+        f"🗃 پر کردن از پول ذخیره: "
+        f"{'🟢 بله' if PUBLISH_FILL_FROM_POOL else '🔴 خیر'}",
+    ]
+    if not _publish_log:
+        lines += ["", "_هنوز دوره‌ای در این اجرا ثبت نشده._"]
+        await reply(update, "\n".join(lines))
+        return
+
+    lines.append("")
+    for item in reversed(_publish_log):
+        lines.append(
+            f"🕐 *{item.get('at', '—')}* ({item.get('trigger', '—')})\n"
+            f"  انتخاب {item.get('selected', 0)}/{PUBLISH_COUNT} | "
+            f"ارسال {item.get('sent', 0)}✅ {item.get('failed', 0)}❌\n"
+            f"  پول {item.get('pool_size', 0)} | "
+            f"ذخیره {item.get('reserve_size', 0)} | "
+            f"از ذخیره {item.get('from_pool', 0)} | "
+            f"اهدایی {item.get('donated', 0)}"
+            + (f"\n  ⚠️ کمبود سهمیه: {item['quota_short']}"
+               if item.get("quota_short") else "")
+        )
+    await reply(update, "\n".join(lines))
 
 
 @admin_only
@@ -887,13 +1594,36 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update,
             card(configs[index], index + 1, len(configs)),
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🎲 یکی دیگه", callback_data="random"),
-                InlineKeyboardButton("📷 QR", callback_data=f"qr_{index}"),
+                tg_ui.ikb("🎲 یکی دیگه", tg_ui.PRIMARY, callback_data="random"),
+                tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
             ]]),
         )
 
     elif data == "iran":
         await cmd_iran(update, context)
+
+    elif data == "countries":
+        await cmd_country(update, context)
+
+    elif data.startswith("co_"):
+        await show_country(update, data[3:])
+
+    elif data == "donate":
+        await cmd_donate(update, context)
+
+    elif data == "donate_go":
+        pending = (context.user_data or {}).get(DONATE_PENDING, "")
+        if pending:
+            await process_donation(update, context, pending)
+        else:
+            await cmd_donate(update, context)
+
+    elif data == "donate_no":
+        if context.user_data is not None:
+            context.user_data.pop(DONATE_PENDING, None)
+            context.user_data.pop(DONATE_FLAG, None)
+        await reply(update, "باشه — چیزی اهدا نشد. 👌")
+
     elif data == "reality":
         await reply(update, format_config_list(
             [c for c in configs if vless.is_reality(c)], "🔐 Reality"
@@ -942,6 +1672,7 @@ USER_COMMANDS = [
     ("start", "شروع", cmd_start),
     ("get", "بهترین کانفیگ", cmd_get),
     ("iran", "تأییدشده از داخل ایران", cmd_iran),
+    ("country", "انتخاب بر اساس کشور", cmd_country),
     ("list", "لیست کانفیگ‌ها", cmd_list),
     ("reality", "کانفیگ‌های Reality", cmd_reality),
     ("tls", "کانفیگ‌های TLS", cmd_tls),
@@ -949,21 +1680,46 @@ USER_COMMANDS = [
     ("qr", "QR code کانفیگ", cmd_qr),
     ("ping", "تأخیر کانفیگ‌ها", cmd_ping),
     ("sub", "لینک اشتراک", cmd_sub),
+    ("donate", "اهدای کانفیگ", cmd_donate),
     ("stats", "آمار pipeline", cmd_stats),
+    ("whoami", "شناسه و نقش من", cmd_whoami),
     ("help", "راهنما", cmd_help),
 ]
 
+# ادمین‌ها: توضیح دارند چون در منوی تلگرام *فقط برای خودشان* ثبت می‌شوند
+# (BotCommandScopeChat). کاربر عادی این‌ها را در منو نمی‌بیند — و اگر دستی
+# تایپ کند، @admin_only جوابش را می‌دهد. منو راحتی است، مرز امنیت نیست.
 ADMIN_COMMANDS = [
-    ("run", cmd_run),
-    ("publish", cmd_publish),
-    ("status", cmd_status),
-    ("on", cmd_on),
-    ("off", cmd_off),
-    ("add", cmd_add),
-    ("test", cmd_test),
+    ("publish", "انتشار یک دوره الان", cmd_publish),
+    ("cycle", "گزارش دوره‌های انتشار", cmd_cycle),
+    ("status", "وضعیت سیستم", cmd_status),
+    ("health", "سلامت منابع", cmd_health),
+    ("pause", "مکث انتشار خودکار", cmd_pause),
+    ("resume", "ادامه‌ی انتشار خودکار", cmd_resume),
+    ("on", "روشن کردن ربات", cmd_on),
+    ("off", "خاموش کردن ربات", cmd_off),
+    ("donations", "صف اهدا", cmd_donations),
+    ("run", "اجرای pipeline", cmd_run),
+    ("add", "افزودن کانفیگ دستی", cmd_add),
+    ("test", "تست یک کانفیگ", cmd_test),
 ]
+
+# نقشه‌ی دکمه‌های ادمین (بالا خالی تعریف شد، این‌جا پر می‌شود).
+ADMIN_ROUTES.update({
+    BTN_A_PUBLISH: cmd_publish,
+    BTN_A_STATUS: cmd_status,
+    BTN_A_DONATIONS: cmd_donations,
+    BTN_A_TOGGLE: cmd_toggle_publish,
+})
+
+
 async def setup_commands(app: Application) -> None:
-    """منوی دستورها. خطا نباید جلوی بالا آمدن ربات را بگیرد."""
+    """منوی دستورها. خطا نباید جلوی بالا آمدن ربات را بگیرد.
+
+    دو دامنه: عمومی (کاربر) و per-chat برای هر ادمین. اگر ثبت برای یک
+    ادمین شکست بخورد (مثلاً هرگز به ربات پیام نداده و chat وجود ندارد)،
+    بقیه‌ی ادمین‌ها و بالا آمدن ربات را خراب نمی‌کند.
+    """
     try:
         await app.bot.set_my_commands(
             [BotCommand(name, desc) for name, desc, _ in USER_COMMANDS]
@@ -972,8 +1728,30 @@ async def setup_commands(app: Application) -> None:
     except Exception as exc:
         logger.warning(f"⚠️ ثبت منوی دستورها ناموفق: {exc}")
 
+    admin_menu = [
+        BotCommand(name, desc)
+        for name, desc, _ in USER_COMMANDS + ADMIN_COMMANDS
+    ]
+    ok = 0
+    for admin_id in ADMIN_IDS:
+        try:
+            await app.bot.set_my_commands(
+                admin_menu, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+            ok += 1
+        except Exception as exc:
+            logger.warning(f"⚠️ منوی ادمین ثبت نشد: {exc}")
+    if ok:
+        logger.info(f"🛠️ منوی ادمین برای {ok} ادمین ثبت شد")
+
 
 async def post_init(app: Application) -> None:
+    load_bot_state()
+    logger.info(tg_ui.support_note())
+    logger.info(
+        f"🛠️ {len(ADMIN_IDS)} ادمین | {len(USER_COMMANDS)} دستور کاربر | "
+        f"{len(ADMIN_COMMANDS)} دستور ادمین"
+    )
     await setup_commands(app)
     if not AUTO_PUBLISH:
         logger.info("⏸️ انتشار خودکار خاموش است (AUTO_PUBLISH=0)")
@@ -985,6 +1763,7 @@ async def post_init(app: Application) -> None:
     logger.info(
         f"🔁 انتشار خودکار فعال: هر {PUBLISH_INTERVAL_MIN} دقیقه، "
         f"{PUBLISH_COUNT} کانفیگ + لینک اشتراک"
+        + (" — ⏸️ در حالت مکث شروع می‌شود" if PUBLISH_PAUSED else "")
     )
 
 
@@ -1007,7 +1786,7 @@ def main() -> None:
 
     for name, _desc, handler in USER_COMMANDS:
         app.add_handler(CommandHandler(name, handler))
-    for name, handler in ADMIN_COMMANDS:
+    for name, _desc, handler in ADMIN_COMMANDS:
         app.add_handler(CommandHandler(name, handler))
     app.add_handler(CallbackQueryHandler(handle_callback))
     # دکمه‌های ثابت متن معمولی می‌فرستند، پس آخرین هندلر متن را می‌گیرد.

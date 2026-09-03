@@ -141,33 +141,60 @@ SKIP_TELEGRAM = _bool_env("SKIP_TELEGRAM")
 SKIP_CHECKHOST = _bool_env("SKIP_CHECKHOST")
 
 # ─── منابع ────────────────────────────────────────────────
+# هر ورودی این دو فهرست با tools/probe_sources.py سنجیده شده است — همان
+# هدرها و همان استخراج‌کننده‌ی web_scraper. دلیلش: از ۱۱ منبع قبلی ۶ تا مرده
+# بودند (۴۰۴ یا صفر کانفیگ) و از ۵۰ کاندید بررسی‌شده ۲۸ تا بی‌فایده. URL مرده
+# هم زمان اجرا می‌خورد، هم لاگ را پر می‌کند، هم این توهم را می‌سازد که منبع
+# زیاد داریم. عددهای کنار هر خط شمارش اندازه‌گیری‌شده در ۲۰۲۶-۰۹-۰۳ است
+# (کانفیگ/endpoint یکتا) — برای تشخیص «منبع خشکید» در اجرای بعدی.
 GITHUB_REPOS = [
     "0xRadikal/Free-v2ray-Configs",
-    "barry-far/V2ray-Configs",
-    "mahdibland/V2RayAggregator",
-    "4n0nymou3/V2Ray-Configs-Premium",
+    "Epodonios/v2ray-configs",
+    "coldwater-10/V2ray-Config",
+    "Kolandone/v2raycollector",
+    "Leon406/SubCrawler",
+    "mheidari98/.proxy",
+    "Surfboardv2ray/TGParse",
+    "LalatinaHub/Mineral",
+    "MhdiTaheri/V2rayCollector",
+    "AzadNetCH/Clash",
+    "ALIILAPRO/v2rayNG-Config",
     "roosterkid/openproxylist",
-    "yebekhe/V2Hub",
-    "hossein-mohseni/v2ray",
     "Pawdroid/Free-servers",
-    "aiboboxx/v2rayfree",
-    "mfuu/v2ray",
+    "ermaozi/get_subscribe",
 ]
 
 DIRECT_URLS = [
-    # 0xRadikal - بهترین منبع، هر ۳۱ دقیقه
-    "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
-    "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
-    # بقیه منابع
-    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
-    "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
-    "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
-    "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
-    "https://raw.githubusercontent.com/yebekhe/V2Hub/main/sub/mix",
-    "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-    "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-    "https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o/config.txt",
-    "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+    # ── منابع بزرگ (هر کدام هزاران endpoint یکتا) ──
+    "https://raw.githubusercontent.com/Kolandone/v2raycollector/main/vless.txt",              # 34875/7634
+    "https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/Splitted-By-Protocol/vless.txt",  # 17262/5709
+    "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",               # 7901/6097
+    "https://raw.githubusercontent.com/mheidari98/.proxy/main/vless",                          # 7212/4361
+    "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",       # 6173/2458
+    "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt",    # 6151/2448
+    "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/python/vless",              # 6013/2418
+    # 0xRadikal — الگوی pipeline از همین پروژه گرفته شده، هر ۳۱ دقیقه آپدیت
+    "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",       # 5260/3670
+    "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",         # 1130/845
+    # ── منابع متوسط ──
+    "https://raw.githubusercontent.com/LalatinaHub/Mineral/master/result/nodes",               # 1336/1264
+    "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/vless",              # 747/403
+    "https://raw.githubusercontent.com/AzadNetCH/Clash/main/AzadNet.txt",                      # 588/351
+    "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector_Py/main/sub/Mix/mix.txt",     # 409/220
+    "https://raw.githubusercontent.com/ndsphonemy/proxy-sub/main/speed.txt",                   # 374/214
+    "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/server.txt",              # 347/244
+    "https://raw.githubusercontent.com/liketolivefree/kobabi/main/sub.txt",                    # 300/131
+    "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",           # 125/124
+    # ── منابع کوچک ولی زنده (هزینه‌شان یک درخواست است) ──
+    "https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/vless.txt",      # 65/60
+    "https://raw.githubusercontent.com/Ashkan-m/v2ray/main/Sub.txt",                           # 56/56
+    "https://raw.githubusercontent.com/Rayan-Config/C-Sub/refs/heads/main/configs/proxy.txt",  # 31/19
+    "https://raw.githubusercontent.com/hans-thomas/v2ray-subscription/master/servers.txt",     # 26/23
+    "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1",   # 18/16
+    "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",        # 8/8
+    "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",                        # 7/7
+    "https://raw.githubusercontent.com/mahsanet/MahsaFreeConfig/main/mtn/sub_1.txt",           # 6/5
+    "https://raw.githubusercontent.com/Everyday-VPN/Everyday-VPN/main/subscription/main.txt",  # 2/2
 ]
 
 TELEGRAM_CHANNELS = [
@@ -199,6 +226,15 @@ SUB_B64_FILE       = "configs/sub_base64.txt"
 # کانفیگ‌هایی که از ایران هم زنده‌اند *و* همه‌ی دورهای xray را پاس کرده‌اند.
 IRAN_FILE          = "configs/iran.txt"
 IRAN_B64_FILE      = "configs/iran_base64.txt"
+# تفکیک «داخلی/خارجی» در انتهای مسیر تولید لینک اشتراک: هرچه تأیید ایران
+# نگرفته این‌جا می‌آید. یک لینک برای کاربر داخل ایران، یک لینک برای کسی که
+# از بیرون یا با ISP دیگری وصل می‌شود.
+INTL_FILE          = "configs/international.txt"
+INTL_B64_FILE      = "configs/international_base64.txt"
+# پول ذخیره (لایه ۲): کانفیگ‌هایی که TCP/TLS/Geo را پاس کردند ولی به لایه ۷
+# نرسیدند یا آن را رد نکردند. تنها مصرفش پر کردن سهمیه‌ی ۱۰تایی انتشار است
+# وقتی خروجی تأییدشده کمتر از ۱۰ تاست — با برچسب صریح «تست‌نشده».
+POOL_FILE          = "configs/pool.txt"
 # ۱۰ کانفیگ برتر — همان چیزی که در کانال پست می‌شود.
 TOP_FILE           = "configs/top10.txt"
 # قرارداد ماشین‌خوان: مصرف‌کننده باید این را بخواند نه مسیرها را hardcode کند.
@@ -207,6 +243,11 @@ INDEX_FILE         = "configs/index.json"
 HEALTH_FILE        = "configs/health.json"
 # وضعیت چرخش انتشار (کدام کانفیگ‌ها قبلاً پست شده‌اند).
 PUBLISH_STATE_FILE = os.getenv("PUBLISH_STATE_FILE", "configs/publish_state.json")
+# کانفیگ‌های اهدایی کاربران. commit نمی‌شود (.gitignore): محتوایش داده‌ی
+# کاربر است و نباید در مخزن عمومی بایگانی شود.
+DONATIONS_FILE     = os.getenv("DONATIONS_FILE", "configs/donations.json")
+# وضعیت ماندگار ربات (روشن/خاموش، انتشار مکث). با restart پاک نمی‌شود.
+BOT_STATE_FILE     = os.getenv("BOT_STATE_FILE", "configs/bot_state.json")
 # تفکیک بر اساس کشور — پوشه، هر کشور یک فایل.
 BY_COUNTRY_DIR     = "configs/countries"
 
@@ -230,9 +271,37 @@ PUBLISH_COOLDOWN    = _int_env("PUBLISH_COOLDOWN", 6)
 # پیام «سرِ دسته». پیش‌فرض خاموش است تا هر دوره دقیقاً ۱۰ کانفیگ + ۱ پیام
 # لینک اشتراک باشد (خواسته‌ی صریح کاربر: پیام یازدهم لینک اشتراک است).
 PUBLISH_INTRO       = _bool_env("PUBLISH_INTRO", False)
+# سهمیه‌ی ۱۰تایی *باید* پر شود. تأییدشده‌های ایران اول می‌آیند، بعد
+# کانفیگ‌های بین‌المللی، و اگر باز کم بود از POOL_FILE (تست‌نشده‌ها) پر
+# می‌شود. چرا: در چرخه‌های واقعی فقط ۳ کانفیگ پست شد چون پول تأییدشده کوچک
+# بود؛ کاربر صریح گفت سهمیه‌ی ۱۰ نباید بشکند.
+PUBLISH_STRICT_COUNT = _bool_env("PUBLISH_STRICT_COUNT", True)
+# آخرین چاره برای پر کردن سهمیه: کانفیگ‌های پول ذخیره (لایه ۶ را پاس کردند،
+# لایه ۷ تأییدشان نکرده). با برچسب «تست‌نشده» پست می‌شوند تا کاربر گمراه نشود.
+PUBLISH_FILL_FROM_POOL = _bool_env("PUBLISH_FILL_FROM_POOL", True)
+# چند کانفیگ اهدایی *اضافه بر* سهمیه‌ی ۱۰تایی در هر دوره. اهدایی‌ها هرگز
+# دوبار پست نمی‌شوند، پس ۵۰ کانفیگ اهدایی = ۲۵ دوره.
+PUBLISH_DONATED_COUNT = _int_env("PUBLISH_DONATED_COUNT", 2)
+
+# ─── بخش اهدای کانفیگ ──────────────────────────────────────
+# کاربر کانفیگ می‌فرستد، ربات اعتبارسنجی می‌کند و به صف اهدایی اضافه می‌شود.
+DONATE_ENABLED        = _bool_env("DONATE_ENABLED", True)
+# سقف هر پیام و سقف روزانه‌ی هر کاربر — جلوگیری از پر کردن صف با یک paste.
+DONATE_MAX_PER_MSG    = _int_env("DONATE_MAX_PER_MSG", 20)
+DONATE_MAX_PER_DAY    = _int_env("DONATE_MAX_PER_DAY", 50)
+# فاصله‌ی حداقلی بین دو اهدای یک کاربر (ثانیه) — ضد spam.
+DONATE_MIN_GAP_SEC    = _int_env("DONATE_MIN_GAP_SEC", 5)
+# سقف کل صف؛ از بی‌نهایت شدن فایل جلوگیری می‌کند.
+DONATE_QUEUE_MAX      = _int_env("DONATE_QUEUE_MAX", 5000)
+# قبل از انتشار، کانفیگ اهدایی یک تست TCP می‌گیرد. اهدایی مرده بدتر از
+# نبودنش است.
+DONATE_TCP_CHECK      = _bool_env("DONATE_TCP_CHECK", True)
 
 # ─── محدودیت‌ها ────────────────────────────────────────────
 MAX_PER_SOURCE          = _int_env("MAX_PER_SOURCE", 2000)
+# سقف پول ذخیره‌ی نوشته‌شده در POOL_FILE. این فایل هر نیم‌ساعت commit می‌شود،
+# پس بی‌سقف بودنش مخزن را باد می‌کند. ۵۰۰ یعنی ۵۰ دوره‌ی انتشار ذخیره.
+POOL_MAX                = _int_env("POOL_MAX", 500)
 CONFIGS_PER_TG_MESSAGE  = _int_env("CONFIGS_PER_TG_MESSAGE", 10)
 MAX_TG_MSG_LEN          = 4096
 # سقف واقعی برای ساخت پیام؛ کمی زیر ۴۰۹۶ تا entity ها جا بشن.
@@ -268,5 +337,21 @@ MIRROR_BASE = (
 SUB_URL       = f"{RAW_BASE}/{VALID_FILE}" if RAW_BASE else ""
 SUB_B64_URL   = f"{RAW_BASE}/{SUB_B64_FILE}" if RAW_BASE else ""
 SUB_IRAN_URL  = f"{RAW_BASE}/{IRAN_FILE}" if RAW_BASE else ""
+SUB_IRAN_B64_URL = f"{RAW_BASE}/{IRAN_B64_FILE}" if RAW_BASE else ""
+SUB_INTL_URL  = f"{RAW_BASE}/{INTL_FILE}" if RAW_BASE else ""
+SUB_INTL_B64_URL = f"{RAW_BASE}/{INTL_B64_FILE}" if RAW_BASE else ""
 INDEX_URL     = f"{RAW_BASE}/{INDEX_FILE}" if RAW_BASE else ""
 SUB_MIRROR_URL = f"{MIRROR_BASE}/{VALID_FILE}" if MIRROR_BASE else ""
+
+
+def country_sub_url(code: str) -> str:
+    """لینک اشتراک یک کشور. کد باید دوحرفیِ الفبایی باشد.
+
+    چرا اعتبارسنجی: این تابع با ورودی‌ای صدا زده می‌شود که از callback_data
+    ربات می‌آید، یعنی داده‌ی سمت کاربر. بدون این بررسی می‌شد با `../` مسیر
+    دیگری از مخزن را در لینک جا داد.
+    """
+    code = (code or "").strip().upper()
+    if len(code) != 2 or not code.isalpha() or not RAW_BASE:
+        return ""
+    return f"{RAW_BASE}/{BY_COUNTRY_DIR}/{code}.txt"

@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import outputs, vless
 from src.config import (
-    CONFIGS_DIR, MAX_HTTP_TEST, PUBLISH_AFTER_COLLECT, SKIP_TELEGRAM,
+    CONFIGS_DIR, MAX_HTTP_TEST, POOL_MAX, PUBLISH_AFTER_COLLECT, SKIP_TELEGRAM,
     SKIP_XRAY, STATS_FILE,
 )
 from src.logger import get_logger
@@ -111,6 +111,10 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
     logger.info(f"   ورودی: {len(configs)}\n")
     stats: Dict = {}
     counts: List[int] = [len(configs)]
+    # پول ذخیره: کانفیگ‌هایی که لایه ۶ را پاس کردند ولی لایه ۷ تأییدشان نکرد
+    # چون *تست نشدند* (سقف MAX_HTTP_TEST یا SKIP_XRAY). فقط برای پر کردن
+    # سهمیه‌ی ۱۰تایی کانال به کار می‌رود، با برچسب صریح «تست‌نشده».
+    reserve: List[str] = []
 
     logger.info("1️⃣  فرمت + فیلتر VLESS...")
     configs, s1 = filter_by_format(configs)
@@ -210,7 +214,16 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         stats["layer7_http"] = s7
         logger.info(f"   → {len(configs_ms)}\n")
         final = [tag(c, ms) for c, ms in configs_ms]
+        # ذخیره فقط از *تست‌نشده‌ها* پر می‌شود، نه از رد‌شده‌های لایه ۷.
+        # قاعده‌ی همیشگی پروژه: «تست نشد» ≠ «رد شد». کانفیگی که xray واقعاً
+        # امتحان کرد و کار نکرد، حق ورود به کانال ندارد؛ کانفیگی که فقط به
+        # سقف زمان خورد، هنوز بهترین گزینه‌ی موجود برای پر کردن سهمیه است.
+        reserve = [
+            tag(c, tls_ms_map.get(c) or tcp_ms_map.get(c, 0.0))
+            for c in ordered[MAX_HTTP_TEST:]
+        ]
 
+    reserve = reserve[:POOL_MAX]
     final.sort(key=vless.get_latency_ms)
     counts.append(len(final))
     iran_verified = sum(1 for c in final if vless.is_iran_verified(c))
@@ -218,12 +231,18 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         "funnel": counts,
         "final": len(final),
         "iran_verified": iran_verified,
+        "reserve": len(reserve),
     }
+    # کانال پشتیِ برگرداندن ذخیره بدون شکستن قرارداد دوعضوی این تابع.
+    # main() فوراً pop می‌کند تا در stats.json ننشیند (چند صد لینک VLESS
+    # داخل فایل آمار نه خوانا است نه لازم).
+    stats["_reserve"] = reserve
 
     logger.info(
         f"\n{'=' * 55}\n✅ Pipeline کامل\n"
         f"   {' → '.join(str(n) for n in counts)}\n"
         f"   🇮🇷 تأییدشده از ایران: {iran_verified}/{len(final)}\n"
+        f"   🗃️  پول ذخیره (تست‌نشده): {len(reserve)}\n"
         f"{'=' * 55}"
     )
     return final, stats
@@ -238,6 +257,7 @@ async def main() -> None:
 
     raw: List[str] = []
     valid: List[str] = []
+    reserve: List[str] = []
     pipe_stats: Dict = {}
     written: Dict = {}
     error: str = ""
@@ -246,9 +266,13 @@ async def main() -> None:
     try:
         raw = await collect()
         valid, pipe_stats = await pipeline(raw)
+        # ذخیره از آمار جدا می‌شود تا فایل stats.json فهرست لینک نشود.
+        reserve = list(pipe_stats.pop("_reserve", []))
         # خروجی‌ها فقط وقتی چیزی هست نوشته میشن؛ وگرنه فایل قبلی می‌ماند تا
         # لینک subscription کاربران با یک اجرای ناموفق از کار نیفتد.
-        written = outputs.write_all(valid, {"pipeline": pipe_stats}, raw)
+        written = outputs.write_all(
+            valid, {"pipeline": pipe_stats}, raw, pool_configs=reserve,
+        )
         if not valid:
             logger.warning(
                 "⚠️ هیچ کانفیگی pipeline رو پاس نکرد — فایل‌های قبلی حفظ شدند"
@@ -267,6 +291,7 @@ async def main() -> None:
             "raw_collected": len(raw),
             "valid_configs": len(valid),
             "iran_verified": sum(1 for c in valid if vless.is_iran_verified(c)),
+            "reserve_pool": len(reserve),
             "skip_xray": SKIP_XRAY,
             "written": written,
             "pipeline": pipe_stats,

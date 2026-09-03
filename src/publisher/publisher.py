@@ -14,8 +14,10 @@ PUBLISH_STATE_FILE نگه می‌دارد هر کانفیگ در کدام دور
 PUBLISH_COOLDOWN دوره بعد اجازه‌ی تکرار می‌دهد؛ با ۱۰ کانفیگ در هر دوره و
 cooldown=۶، در یک ساعت ~۱۲۰ کانفیگ متفاوت دیده می‌شود.
 
-اولویت انتخاب: اول کانفیگ‌های تأییدشده از ایران (برچسب IR در fragment)،
-بعد بقیه به ترتیب تأخیر تونل.
+اولویت انتخاب: اول کانفیگ‌های تأییدشده از ایران (برچسب IR در fragment)، بعد
+بین‌المللی‌ها به ترتیب تأخیر تونل، و اگر سهمیه پر نشد از پول ذخیره‌ی
+تست‌نشده. هیچ‌جا فیلتر «فقط ایران» نداریم: قبلاً دوره‌هایی با ۳ کانفیگ پست
+می‌شد چون پول تأییدشده کوچک بود، و کاربر صریح گفت سهمیه‌ی ۱۰ نباید بشکند.
 """
 from __future__ import annotations
 
@@ -33,8 +35,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import tg_md, vless
 from src.config import (
-    HTTP_TEST_ROUNDS, PUBLISH_COOLDOWN, PUBLISH_COUNT, PUBLISH_INTERVAL_MIN,
-    PUBLISH_INTRO, PUBLISH_MSG_GAP_SEC, PUBLISH_STATE_FILE, SUB_B64_URL,
+    HTTP_TEST_ROUNDS, PUBLISH_COOLDOWN, PUBLISH_COUNT, PUBLISH_FILL_FROM_POOL,
+    PUBLISH_INTERVAL_MIN, PUBLISH_INTRO, PUBLISH_MSG_GAP_SEC,
+    PUBLISH_STATE_FILE, PUBLISH_STRICT_COUNT, SUB_B64_URL, SUB_INTL_URL,
     SUB_IRAN_URL, SUB_MIRROR_URL, SUB_URL, TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHANNEL_ID,
 )
@@ -86,34 +89,68 @@ def rank_key(config: str) -> Tuple[int, float]:
 
 
 def select_for_publish(
-    configs: List[str], state: Dict, count: int = 0
+    configs: List[str],
+    state: Dict,
+    count: int = 0,
+    reserve: Optional[List[str]] = None,
 ) -> List[str]:
-    """انتخاب کانفیگ‌های این دوره با رعایت cooldown.
+    """انتخاب کانفیگ‌های این دوره — سهمیه *باید* پر شود.
 
-    اگر بعد از cooldown چیزی نماند (پول کوچک‌تر از count×cooldown)، سراغ
-    قدیمی‌ترین پست‌شده‌ها می‌رویم — کانال خالی نمی‌ماند.
+    سه منبع، به همین ترتیب:
+      ۱. پول تأییدشده (`configs`) — `rank_key` خودش تأییدشده‌های ایران را جلو
+         می‌آورد. توجه: این‌جا **فیلتر ایران نداریم**؛ کانفیگ بین‌المللی هم
+         انتخاب می‌شود، فقط بعد از ایرانی‌ها.
+      ۲. پول ذخیره (`reserve`) — تست‌نشده‌ها، فقط برای پر کردن باقی سهمیه.
+      ۳. تکرار قدیمی‌ترین پست‌شده‌ها، اگر باز هم کم بود.
+
+    چرا «تازه‌ی ذخیره» جلوتر از «کهنه‌ی تأییدشده» است: تکرار کانفیگی که چند
+    دقیقه پیش پست شده برای کاربر چیز تازه‌ای ندارد، ولی کانفیگ ذخیره یک
+    گزینه‌ی *ندیده* است — و برچسب کارتش صریح می‌گوید تونلش تست نشده.
+
+    مشکلی که این تابع حل می‌کند: در دوره‌های واقعی فقط ۳ کانفیگ پست می‌شد،
+    چون پول تأییدشده کوچک بود و چیزی جایش را پر نمی‌کرد.
     """
     count = count or PUBLISH_COUNT
-    if not configs:
+    if count <= 0:
         return []
     cycle = int(state.get("cycle", 0))
     posted: Dict[str, int] = state.get("posted", {})
+    cooldown = max(1, PUBLISH_COOLDOWN)
 
-    ordered = sorted(dict.fromkeys(configs), key=rank_key)
     fresh: List[str] = []
-    stale: List[Tuple[int, str]] = []
-    for cfg in ordered:
-        last = posted.get(vless.short_id(cfg))
-        if last is None or cycle - int(last) >= max(1, PUBLISH_COOLDOWN):
-            fresh.append(cfg)
-            if len(fresh) >= count:
-                return fresh
-        else:
-            stale.append((int(last), cfg))
+    stale: List[Tuple[int, int, float, str]] = []
+    seen: set = set()
+    # tier صفر پول تأییدشده است، tier یک ذخیره. کلید یکتایی short_id است نه
+    # رشته‌ی کامل: یک endpoint می‌تواند در دو پول با برچسب تأخیر متفاوت باشد.
+    for tier, group in enumerate((configs or [], reserve or [])):
+        for cfg in sorted(dict.fromkeys(group), key=rank_key):
+            sid = vless.short_id(cfg)
+            if sid in seen:
+                continue
+            seen.add(sid)
+            last = posted.get(sid)
+            if last is None or cycle - int(last) >= cooldown:
+                fresh.append(cfg)
+            else:
+                stale.append((int(last), tier, vless.get_latency_ms(cfg), cfg))
 
-    stale.sort(key=lambda item: item[0])
-    fresh.extend(cfg for _, cfg in stale[: count - len(fresh)])
+    if len(fresh) >= count:
+        return fresh[:count]
+    stale.sort(key=lambda item: item[:3])
+    fresh.extend(cfg for *_, cfg in stale[: count - len(fresh)])
     return fresh[:count]
+
+
+def reserve_ids(configs: List[str], reserve: Optional[List[str]]) -> set:
+    """شناسه‌هایی که *فقط* در پول ذخیره‌اند — برای برچسب «تست‌نشده».
+
+    اگر یک endpoint در هر دو پول باشد، تأییدشده حساب می‌شود: نسخه‌ی تأییدشده
+    ادعای قوی‌تری دارد و همان است که انتخاب شده.
+    """
+    if not reserve:
+        return set()
+    verified = {vless.short_id(c) for c in configs or []}
+    return {vless.short_id(c) for c in reserve} - verified
 
 
 def mark_published(state: Dict, configs: List[str]) -> Dict:
@@ -136,11 +173,16 @@ def mark_published(state: Dict, configs: List[str]) -> Dict:
 
 # ─── متن پیام‌ها ───────────────────────────────────────────
 
-def build_sub_message(total: int, iran_count: int = 0) -> str:
+def build_sub_message(total: int, iran_count: int = 0, intl_count: int = 0) -> str:
     """پیام یازدهم: لینک subscription — همان چیزی که کاربر خواست زیر آخرین پست.
 
     چند لینک می‌دهیم چون کلاینت‌ها یکسان نیستند: v2rayNG/NekoBox نسخه‌های
     قدیمی فهرست متنی را نمی‌خوانند و فقط Base64 را قبول می‌کنند.
+
+    تفکیک داخلی/خارجی در انتهای همین مسیر انجام می‌شود: یک لینک برای کسی که
+    از ایران وصل می‌شود (فقط endpoint هایی که نود ایرانی دیده جواب می‌دهند) و
+    یک لینک برای بقیه. قاطی کردنشان یعنی کاربر ایرانی نصف فهرست را بی‌فایده
+    امتحان می‌کند.
     """
     lines = [
         "📡 *لینک اشتراک (Subscription)*",
@@ -151,11 +193,23 @@ def build_sub_message(total: int, iran_count: int = 0) -> str:
     ]
     if iran_count:
         lines.append(f"🇮🇷 تأییدشده از ایران: *{iran_count}*")
-    lines += ["", "🔗 *لینک اصلی:*", tg_md.code(SUB_URL or "—")]
+    if intl_count:
+        lines.append(f"🌍 بین‌المللی: *{intl_count}*")
+    lines += ["", "🔗 *لینک اصلی* (همه):", tg_md.code(SUB_URL or "—")]
     if SUB_B64_URL:
         lines += ["", "🔗 *نسخه‌ی Base64* (کلاینت‌های قدیمی‌تر):", tg_md.code(SUB_B64_URL)]
     if SUB_IRAN_URL and iran_count:
-        lines += ["", "🇮🇷 *فقط تأییدشده‌های ایران:*", tg_md.code(SUB_IRAN_URL)]
+        lines += [
+            "",
+            "🇮🇷 *ویژه‌ی داخل ایران* (تأییدشده از نود ایرانی):",
+            tg_md.code(SUB_IRAN_URL),
+        ]
+    if SUB_INTL_URL and intl_count:
+        lines += [
+            "",
+            "🌍 *ویژه‌ی خارج / ISP دیگر:*",
+            tg_md.code(SUB_INTL_URL),
+        ]
     if SUB_MIRROR_URL:
         lines += ["", "🪞 *آینه* (اگر لینک اصلی باز نشد):", tg_md.code(SUB_MIRROR_URL)]
     lines += [
@@ -254,75 +308,135 @@ class Publisher:
         except TelegramError:
             return False
 
+    async def send_card(self, config: str, index: int, total: int, badge: str = "") -> bool:
+        """یک کارت کانفیگ. اگر Markdown رد شد، خودِ لینک خام فرستاده می‌شود.
+
+        چرا fallback: اسم کانفیگ از منابع عمومی می‌آید و یک `_` تنها باعث
+        خطای ۴۰۰ تلگرام می‌شود؛ کاربر برای *لینک* آمده، نه برای کارت.
+        """
+        rounds = 0 if badge else HTTP_TEST_ROUNDS
+        ok = await self.send(renderer.spec_card(config, index, total, rounds, badge))
+        if not ok:
+            ok = await self.send_plain(f"#{vless.short_id(config)}\n{config}")
+        return ok
+
     async def publish_batch(
         self,
         configs: List[str],
         stats: Optional[Dict] = None,
         with_intro: bool = PUBLISH_INTRO,
+        reserve: Optional[List[str]] = None,
+        donated: Optional[List[str]] = None,
     ) -> Dict[str, object]:
-        """یک دوره: ۱۰ پیام کانفیگ + پیام لینک اشتراک.
+        """یک دوره: ۱۰ پیام کانفیگ + اهدایی‌ها + پیام لینک اشتراک.
 
         پیام «سرِ دسته» پیش‌فرض خاموش است تا شمارش دقیقاً همان چیزی بماند که
-        خواسته شده: ۱۰ کانفیگ و پیام یازدهم لینک اشتراک. با PUBLISH_INTRO=1
+        خواسته شده: ۱۰ کانفیگ و پیام آخر لینک اشتراک. با PUBLISH_INTRO=1
         روشن می‌شود.
 
-        خروجی: خلاصه‌ی دوره (چند فرستاده شد، چه شناسه‌هایی) تا ربات بتواند
-        در /status نشان دهد.
+        `reserve` پول ذخیره است (تست‌نشده‌ها) و فقط سهمیه‌ی خالی را پر می‌کند.
+        `donated` کانفیگ‌های اهدایی‌اند و *اضافه بر* سهمیه‌ی ۱۰تایی پست
+        می‌شوند. صداکننده باید `donated_sent` خروجی را sent علامت بزند —
+        این‌جا علامت نمی‌زنیم تا publisher به ماژول صف وابسته نشود.
+
+        خروجی: خلاصه‌ی دوره تا ربات در /status نشان دهد.
         """
-        result: Dict[str, object] = {"selected": 0, "sent": 0, "failed": 0, "ids": []}
-        if not configs:
+        result: Dict[str, object] = {
+            "selected": 0, "sent": 0, "failed": 0, "ids": [],
+            "from_pool": 0, "quota_short": 0, "donated_sent": [],
+        }
+        pool = list(reserve or []) if PUBLISH_FILL_FROM_POOL else []
+        donated = [c for c in (donated or []) if isinstance(c, str) and c.strip()]
+        if not configs and not pool and not donated:
             logger.warning("⚠️ کانفیگ برای ارسال نیست")
             return result
         if not await self.connect():
             return result
 
         state = load_state()
-        chosen = select_for_publish(configs, state)
-        if not chosen:
-            logger.warning("⚠️ همه‌ی کانفیگ‌ها در cooldown بودند")
+        chosen = select_for_publish(configs, state, reserve=pool)
+        if not chosen and not donated:
+            logger.warning("⚠️ چیزی برای ارسال نماند")
             return result
 
+        pool_only = reserve_ids(configs, pool)
+        from_pool = sum(1 for c in chosen if vless.short_id(c) in pool_only)
+        shortfall = max(0, PUBLISH_COUNT - len(chosen))
+        if shortfall and PUBLISH_STRICT_COUNT:
+            logger.warning(
+                f"⚠️ سهمیه‌ی {PUBLISH_COUNT}تایی پر نشد — فقط {len(chosen)} "
+                f"کانفیگ یکتا در دسترس بود (تأییدشده {len(configs)}، "
+                f"ذخیره {len(pool)})"
+            )
         iran_total = sum(1 for c in configs if vless.is_iran_verified(c))
-        result["selected"] = len(chosen)
-        result["ids"] = [vless.short_id(c) for c in chosen]
+        intl_total = max(0, len(set(configs)) - iran_total)
+        result.update({
+            "selected": len(chosen),
+            "ids": [vless.short_id(c) for c in chosen],
+            "from_pool": from_pool,
+            "quota_short": shortfall,
+        })
 
         if with_intro:
             await self.send(build_intro(chosen, len(configs), stats))
             await asyncio.sleep(PUBLISH_MSG_GAP_SEC)
 
+        total_cards = len(chosen) + len(donated)
         sent = 0
         failed = 0
-        for index, cfg in enumerate(chosen, 1):
-            card = renderer.spec_card(cfg, index, len(chosen), HTTP_TEST_ROUNDS)
-            ok = await self.send(card)
-            if not ok:
-                # کارت رد شد (احتمالاً entity خراب در اسم)؛ حداقل خود لینک
-                # باید برسد — کاربر برای همین آمده.
-                ok = await self.send_plain(f"#{vless.short_id(cfg)}\n{cfg}")
-            if ok:
+        index = 0
+        donated_ok: List[str] = []
+        for cfg in chosen:
+            index += 1
+            badge = "pool" if vless.short_id(cfg) in pool_only else ""
+            if await self.send_card(cfg, index, total_cards, badge):
                 sent += 1
             else:
                 failed += 1
-                logger.error(f"❌ کانفیگ {index}/{len(chosen)} ارسال نشد")
+                logger.error(f"❌ کانفیگ {index}/{total_cards} ارسال نشد")
             await asyncio.sleep(PUBLISH_MSG_GAP_SEC)
 
-        if await self.send(build_sub_message(len(configs), iran_total)):
+        # اهدایی‌ها آخر می‌آیند و *اضافه بر* سهمیه‌اند. فقط موفق‌ها برگردانده
+        # می‌شوند: کانفیگی که ارسالش شکست خورد در وضعیت taken می‌ماند و
+        # هیچ‌وقت خودکار دوباره پست نمی‌شود — قرارداد «حداکثر یک بار».
+        for cfg in donated:
+            index += 1
+            if await self.send_card(cfg, index, total_cards, "donated"):
+                sent += 1
+                donated_ok.append(cfg)
+            else:
+                failed += 1
+                logger.error(f"❌ اهدایی {index}/{total_cards} ارسال نشد")
+            await asyncio.sleep(PUBLISH_MSG_GAP_SEC)
+
+        if await self.send(build_sub_message(len(configs), iran_total, intl_total)):
             sent += 1
         else:
             failed += 1
 
-        save_state(mark_published(state, chosen))
+        save_state(mark_published(state, chosen + donated_ok))
         result["sent"] = sent
         result["failed"] = failed
+        result["donated_sent"] = donated_ok
         logger.info(
-            f"📤 دوره‌ی انتشار: {len(chosen)} کانفیگ + لینک اشتراک | "
-            f"{sent} پیام موفق، {failed} ناموفق"
+            f"📤 دوره‌ی انتشار: {len(chosen)}/{PUBLISH_COUNT} کانفیگ"
+            + (f" ({from_pool} از ذخیره)" if from_pool else "")
+            + (f" + {len(donated_ok)} اهدایی" if donated_ok else "")
+            + f" + لینک اشتراک | {sent} پیام موفق، {failed} ناموفق"
         )
         return result
 
-    async def publish(self, configs: List[str], stats: Optional[Dict] = None) -> bool:
+    async def publish(
+        self,
+        configs: List[str],
+        stats: Optional[Dict] = None,
+        reserve: Optional[List[str]] = None,
+        donated: Optional[List[str]] = None,
+    ) -> bool:
         """سازگاری با main.py — یک دوره پس از پایان pipeline."""
-        result = await self.publish_batch(configs, stats)
+        result = await self.publish_batch(
+            configs, stats, reserve=reserve, donated=donated,
+        )
         return bool(result["sent"]) and not result["failed"]
 
     async def send_error(self, error: str) -> None:

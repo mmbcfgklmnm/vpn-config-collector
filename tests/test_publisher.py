@@ -104,6 +104,102 @@ def test_mark_published_prunes_ancient_ids(monkeypatch):
     assert vless.short_id(FAST_PLAIN) in state["posted"]
 
 
+# ─── سهمیه‌ی سخت‌گیرانه ────────────────────────────────────
+
+RESERVE_A = cfg(11, 55.0)
+RESERVE_B = cfg(12, 65.0)
+
+
+def test_international_fills_quota_when_iran_pool_is_small():
+    """مشکل گزارش‌شده: دوره‌هایی با ۳ کانفیگ چون فقط ایرانی‌ها پست می‌شدند."""
+    pool = [SLOW_IRAN, FAST_PLAIN, MID_PLAIN]
+    chosen = pub.select_for_publish(pool, {"cycle": 0, "posted": {}}, count=3)
+    assert len(chosen) == 3
+    assert chosen[0] == SLOW_IRAN          # ایرانی اول
+    assert set(chosen[1:]) == {FAST_PLAIN, MID_PLAIN}   # ولی بقیه هم می‌آیند
+
+
+def test_reserve_fills_remaining_quota():
+    chosen = pub.select_for_publish(
+        [SLOW_IRAN], {"cycle": 0, "posted": {}}, count=3,
+        reserve=[RESERVE_B, RESERVE_A],
+    )
+    # تأییدشده اول، بعد ذخیره به ترتیب تأخیر
+    assert chosen == [SLOW_IRAN, RESERVE_A, RESERVE_B]
+
+
+def test_reserve_is_not_used_when_verified_pool_suffices():
+    chosen = pub.select_for_publish(
+        [SLOW_IRAN, FAST_PLAIN], {"cycle": 0, "posted": {}}, count=2,
+        reserve=[RESERVE_A],
+    )
+    assert RESERVE_A not in chosen
+
+
+def test_fresh_reserve_beats_stale_verified(monkeypatch):
+    """تکرار کانفیگی که تازه پست شده برای کاربر چیز تازه‌ای ندارد."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 10)
+    state = {"cycle": 1, "posted": {vless.short_id(SLOW_IRAN): 1}}
+    chosen = pub.select_for_publish(
+        [SLOW_IRAN], state, count=2, reserve=[RESERVE_A],
+    )
+    assert chosen == [RESERVE_A, SLOW_IRAN]
+
+
+def test_reserve_duplicate_of_verified_config_counts_once():
+    """یک endpoint می‌تواند در هر دو پول باشد؛ سهمیه را دو بار نمی‌خورد."""
+    same_endpoint_untested = vless.add_tag(
+        f"vless://{UUID}@10.0.0.2:443?security=tls&type=tcp#node2", 900.0, "NL", 0.0
+    )
+    chosen = pub.select_for_publish(
+        [SLOW_IRAN], {"cycle": 0, "posted": {}}, count=5,
+        reserve=[same_endpoint_untested],
+    )
+    assert chosen == [SLOW_IRAN]
+
+
+def test_reserve_ids_marks_only_untested_endpoints():
+    ids = pub.reserve_ids([SLOW_IRAN], [RESERVE_A, SLOW_IRAN])
+    assert ids == {vless.short_id(RESERVE_A)}
+    assert pub.reserve_ids([SLOW_IRAN], None) == set()
+
+
+def test_quota_cannot_be_padded_with_duplicates():
+    """اگر پول واقعاً کوچک است، عدد کم برمی‌گردد — کانفیگ جعلی ساخته نمی‌شود."""
+    chosen = pub.select_for_publish(
+        [FAST_PLAIN], {"cycle": 0, "posted": {}}, count=10, reserve=[FAST_PLAIN],
+    )
+    assert chosen == [FAST_PLAIN]
+
+
+def test_zero_count_returns_empty():
+    assert pub.select_for_publish([FAST_PLAIN], {"cycle": 0, "posted": {}}, count=-1) == []
+
+
+# ─── کارت‌ها ──────────────────────────────────────────────
+
+def test_pool_card_never_claims_it_was_tested():
+    """کارت ذخیره نباید ادعای «در ۳ دور تست شد» داشته باشد."""
+    from src.publisher import renderer
+    card = renderer.spec_card(RESERVE_A, 1, 10, verified_rounds=3, badge="pool")
+    assert "تست‌نشده" in card
+    assert "دور پشت سر هم" not in card
+    assert RESERVE_A in card
+
+
+def test_donated_card_is_labelled():
+    from src.publisher import renderer
+    card = renderer.spec_card(RESERVE_A, 1, 12, verified_rounds=3, badge="donated")
+    assert "اهدایی" in card
+    assert "دور پشت سر هم" not in card
+
+
+def test_verified_card_keeps_rounds_claim():
+    from src.publisher import renderer
+    card = renderer.spec_card(SLOW_IRAN, 1, 10, verified_rounds=3)
+    assert "در 3 دور پشت سر هم تست شد" in card
+
+
 # ─── وضعیت روی دیسک ───────────────────────────────────────
 
 def test_state_round_trip(tmp_path, monkeypatch):
@@ -154,3 +250,18 @@ def test_sub_message_hides_iran_line_when_zero():
 
 def test_sub_message_fits_telegram_limit():
     assert len(pub.build_sub_message(9999, 9999)) <= 3800
+
+
+def test_sub_message_splits_domestic_and_international(monkeypatch):
+    """خواسته‌ی کاربر: انتهای مسیر اشتراک، داخلی و خارجی از هم جدا باشند."""
+    monkeypatch.setattr(pub, "SUB_IRAN_URL", "https://x/iran.txt")
+    monkeypatch.setattr(pub, "SUB_INTL_URL", "https://x/international.txt")
+    text = pub.build_sub_message(100, iran_count=40, intl_count=60)
+    assert "https://x/iran.txt" in text
+    assert "https://x/international.txt" in text
+    assert "*40*" in text and "*60*" in text
+
+
+def test_sub_message_hides_intl_link_when_none(monkeypatch):
+    monkeypatch.setattr(pub, "SUB_INTL_URL", "https://x/international.txt")
+    assert "https://x/international.txt" not in pub.build_sub_message(10, 10, 0)

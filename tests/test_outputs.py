@@ -32,6 +32,9 @@ def sandbox(tmp_path, monkeypatch):
         "SUB_B64_FILE": str(tmp_path / "sub_base64.txt"),
         "IRAN_FILE": str(tmp_path / "iran.txt"),
         "IRAN_B64_FILE": str(tmp_path / "iran_base64.txt"),
+        "INTL_FILE": str(tmp_path / "international.txt"),
+        "INTL_B64_FILE": str(tmp_path / "international_base64.txt"),
+        "POOL_FILE": str(tmp_path / "pool.txt"),
         "TOP_FILE": str(tmp_path / "top10.txt"),
         "INDEX_FILE": str(tmp_path / "index.json"),
         "HEALTH_FILE": str(tmp_path / "health.json"),
@@ -96,7 +99,8 @@ def test_write_all_empty_preserves_previous_output(sandbox):
     written = outputs.write_all([], {"pipeline": {}}, raw_configs=[])
 
     assert valid.read_text(encoding="utf-8") == "vless://old\n"
-    assert written == {"valid": 0, "iran": 0, "top": 0, "countries": {}}
+    assert written == {"valid": 0, "iran": 0, "international": 0,
+                       "pool": 0, "top": 0, "countries": {}}
     # health.json برای فهمیدن *چرا* اجرا خالی بود همیشه نوشته می‌شود.
     assert json.loads((sandbox / "health.json").read_text(encoding="utf-8"))
 
@@ -138,12 +142,60 @@ def test_write_all_index_is_machine_readable(sandbox):
     outputs.write_all([cfg(1, "NL", 10.0, iran=150.0)], {"pipeline": {"x": 1}})
     index = json.loads((sandbox / "index.json").read_text(encoding="utf-8"))
 
-    assert index["schema"] == 1
+    assert index["schema"] == 2
     assert index["counts"]["valid"] == 1
     assert index["counts"]["iran_verified"] == 1
     assert index["counts"]["countries"] == {"NL": 1}
     assert index["pipeline"] == {"x": 1}
     assert index["files"]["valid"].endswith("valid.txt")
+    # قرارداد تازه: مصرف‌کننده باید بتواند لینک داخلی/خارجی و پول ذخیره را
+    # از همین فایل پیدا کند، نه با حدس زدن مسیر.
+    assert index["files"]["international"].endswith("international.txt")
+    assert index["files"]["pool"].endswith("pool.txt")
+    assert "international" in index["counts"]
+    assert "pool" in index["counts"]
+
+
+# ─── تفکیک داخلی/خارجی و پول ذخیره ────────────────────────
+
+def test_write_all_splits_domestic_and_international(sandbox):
+    """کاربر داخل ایران نباید نصف فهرست را بی‌فایده امتحان کند."""
+    iran_cfg = cfg(1, "NL", 300.0, iran=180.0)
+    intl_cfg = cfg(2, "DE", 40.0)
+    written = outputs.write_all([intl_cfg, iran_cfg], {})
+
+    assert written["iran"] == 1
+    assert written["international"] == 1
+    assert (sandbox / "iran.txt").read_text(encoding="utf-8").strip() == iran_cfg
+    assert (sandbox / "international.txt").read_text(encoding="utf-8").strip() == intl_cfg
+    assert (sandbox / "international_base64.txt").exists()
+    # فهرست کامل هر دو را دارد
+    assert len((sandbox / "valid.txt").read_text(encoding="utf-8").strip().split("\n")) == 2
+
+
+def test_pool_is_written_even_when_run_has_no_verified_config(sandbox):
+    """اجرای بی‌خروجی همان جایی است که کانال به ذخیره نیاز دارد."""
+    written = outputs.write_all([], {}, pool_configs=[cfg(7, "DE", 60.0)])
+
+    assert written["pool"] == 1
+    assert (sandbox / "pool.txt").exists()
+    # و هیچ فایل خروجی اصلی ساخته نشده
+    assert not (sandbox / "valid.txt").exists()
+
+
+def test_pool_is_deduped_and_sorted_by_latency(sandbox):
+    slow, fast = cfg(1, "NL", 900.0), cfg(2, "DE", 30.0)
+    outputs.write_all([cfg(3, "FR", 10.0)], {}, pool_configs=[slow, fast, slow])
+    lines = (sandbox / "pool.txt").read_text(encoding="utf-8").strip().split("\n")
+    assert lines == [fast, slow]
+
+
+def test_pool_never_mixes_into_valid_output(sandbox):
+    """ذخیره تست‌نشده است؛ نباید در لینک اشتراک تأییدشده بنشیند."""
+    reserve = cfg(9, "DE", 25.0)
+    outputs.write_all([cfg(1, "NL", 500.0)], {}, pool_configs=[reserve])
+    assert reserve not in (sandbox / "valid.txt").read_text(encoding="utf-8")
+    assert reserve not in (sandbox / "top10.txt").read_text(encoding="utf-8")
 
 
 # ─── تفکیک کشور ───────────────────────────────────────────

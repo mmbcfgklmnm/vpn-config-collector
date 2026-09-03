@@ -1,0 +1,4 @@
+vless://14155d8d-14f7-4105-984b-f477e3880943@104.105.202.38:29239?security=reality&type=tcp&sni=www.sony.com&fp=firefox&flow=xtls-rprx-vision&sid=fd7069bcd5853169&pbk=KGI60DoZFcBFTq4yrjFE5C4QitMypVH4HJlkM9VqB1M#FR|FR|358ms
+vless://dabb9a19-03ab-4cdf-8963-d3c45eb0f80d@45.154.96.35:443?type=tcp&encryption=none&flow=xtls-rprx-vision&sni=fra3.freeinternat.com&fp=chrome&security=reality&pbk=bZpzmeWiEJyJQy0W2hHc34Nr6BuFXj1UDd80Cbwh1Fk&sid=ff776ff77be48b88#FR|FR|378ms
+vless://dabb9a19-03ab-4cdf-8963-d3c45eb0f80d@fra3.freeinternat.com:443?flow=xtls-rprx-vision&security=reality&encryption=none&sni=fra3.freeinternat.com&fp=chrome&pbk=bZpzmeWiEJyJQy0W2hHc34Nr6BuFXj1UDd80Cbwh1Fk&sid=ff776ff77be48b88&spx=/&type=tcp&headerType=none&path=/#FR|FR|494ms
+vless://edb50d20-2d3e-4c1e-8a75-a17168a89aa5@145.223.68.58:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=firefox&pbk=qc2DcqT9zPPZr6ePZ7ukxACWrYhRNIBjDIjCK7veyQg&sid=a44ff7d2e80213c2&sni=www.cloudflare.com#FR|FR|814ms

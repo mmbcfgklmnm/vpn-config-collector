@@ -1,2 +1,0 @@
-vless://5d3cbdb2-b82d-4078-82b8-5dd413cca82b@35.229.136.113:35412?type=tcp&security=reality&flow=xtls-rprx-vision&fp=firefox&pbk=eg6DfbLnWtz7PubkXRYvSuQx6QWIRxUsn4l7QEO3Cg4&sid=0630b874d595&sni=www.amd.com#TW|TW|426ms
-vless://0fada528-59c7-44b7-a3d7-377c36c55d97@35.229.131.182:47394?type=tcp&security=reality&flow=xtls-rprx-vision&fp=firefox&pbk=yrZ6uI4z0IVUK3s_FJxIhEfLofvK9PwxT0HcSj_ljmQ&sid=8ecbc93134b311&sni=www.nvidia.com#TW|TW|427ms

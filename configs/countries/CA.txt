@@ -1,2 +1,0 @@
-vless://661f395d-b153-4199-a04b-693f5fe7f261@158.69.112.254:443?security=reality&encryption=none&pbk=wo417FrFdjy7ZhccQ-VWGZEKcoCHSEfyWcJT1pIVc1Y&host=/?BIA_TELEGRAM@MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=www.speedtest.net&sid=3d3c1e645f763ee3#CA|CA|141ms
-vless://d165fa7e-fa7a-414f-8c75-15f18bce5105@66.70.179.198:2053?type=tcp&security=reality&fp=firefox&pbk=wA5Vklw2gN0kMwC7JEmudiPbsKyTeSfbZNvpLiDUBEU&sid=bb437dca4f03116e&sni=www.apple.com#CA|CA|143ms

@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-09-02T21:10:04+00:00",
+  "updated_at": "2026-09-03T12:40:02+00:00",
   "by_kind": {
     "web": {
       "sources": 11,
       "ok": 5,
       "dead": 6,
-      "configs": 3201
+      "configs": 3223
     },
     "github": {
       "sources": 10,
       "ok": 5,
       "dead": 5,
-      "configs": 3232
+      "configs": 3223
     }
   },
   "dead_sources": [
@@ -27,12 +27,12 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o/config.txt",
+      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
       "error": "HTTP 404"
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
+      "name": "https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o/config.txt",
       "error": "HTTP 404"
     },
     {
@@ -73,44 +73,39 @@
   ],
   "top_sources": [
     {
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
+      "count": 2000
+    },
+    {
       "kind": "github",
       "name": "0xRadikal/Free-v2ray-Configs",
       "count": 2000
     },
     {
       "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
-      "count": 2000
-    },
-    {
-      "kind": "web",
       "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
-      "count": 1059
+      "count": 1088
     },
     {
       "kind": "github",
       "name": "aiboboxx/v2rayfree",
-      "count": 548
+      "count": 551
     },
     {
       "kind": "github",
       "name": "roosterkid/openproxylist",
-      "count": 387
+      "count": 363
     },
     {
       "kind": "github",
       "name": "Pawdroid/Free-servers",
-      "count": 287
+      "count": 299
     },
     {
       "kind": "web",
       "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
-      "count": 129
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
-      "count": 10
+      "count": 121
     },
     {
       "kind": "github",
@@ -119,29 +114,20 @@
     },
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+      "count": 8
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-      "count": 3
+      "count": 6
     }
   ],
   "sources": [
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
-      "count": 129,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-      "count": 3,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
       "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
-      "count": 10,
+      "count": 8,
       "ok": true,
       "error": ""
     },
@@ -154,6 +140,13 @@
     },
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+      "count": 6,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
       "count": 0,
       "ok": false,
@@ -161,14 +154,14 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o/config.txt",
+      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
       "count": 0,
       "ok": false,
       "error": "HTTP 404"
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
+      "name": "https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o/config.txt",
       "count": 0,
       "ok": false,
       "error": "HTTP 404"
@@ -185,6 +178,20 @@
       "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
       "count": 0,
       "ok": false,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
+      "count": 121,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
+      "count": 2000,
+      "ok": true,
       "error": ""
     },
     {
@@ -216,6 +223,13 @@
       "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
+      "count": 1088,
+      "ok": true,
+      "error": ""
+    },
+    {
       "kind": "github",
       "name": "0xRadikal/Free-v2ray-Configs",
       "count": 2000,
@@ -223,37 +237,16 @@
       "error": ""
     },
     {
-      "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
-      "count": 2000,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
-      "count": 1059,
-      "ok": true,
-      "error": ""
-    },
-    {
       "kind": "github",
       "name": "Pawdroid/Free-servers",
-      "count": 287,
+      "count": 299,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
       "name": "roosterkid/openproxylist",
-      "count": 387,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "github",
-      "name": "aiboboxx/v2rayfree",
-      "count": 548,
+      "count": 363,
       "ok": true,
       "error": ""
     },
@@ -262,6 +255,13 @@
       "name": "mfuu/v2ray",
       "count": 0,
       "ok": false,
+      "error": ""
+    },
+    {
+      "kind": "github",
+      "name": "aiboboxx/v2rayfree",
+      "count": 551,
+      "ok": true,
       "error": ""
     },
     {

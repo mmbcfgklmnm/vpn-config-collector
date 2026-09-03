@@ -1,133 +1,185 @@
 {
-  "timestamp": "2026-09-02T21:10:04+00:00",
-  "duration_seconds": 68.7,
-  "raw_collected": 3457,
-  "valid_configs": 2,
-  "iran_verified": 2,
+  "timestamp": "2026-09-03T12:40:02+00:00",
+  "duration_seconds": 1582.2,
+  "raw_collected": 3450,
+  "valid_configs": 915,
+  "iran_verified": 54,
   "skip_xray": false,
   "written": {
-    "valid": 2,
-    "iran": 2,
-    "top": 2,
+    "valid": 915,
+    "iran": 54,
+    "top": 10,
     "countries": {
-      "US": 2
+      "AT": 4,
+      "AU": 2,
+      "CA": 4,
+      "CZ": 1,
+      "DE": 18,
+      "ES": 2,
+      "FR": 11,
+      "GB": 152,
+      "JP": 43,
+      "KR": 5,
+      "NL": 118,
+      "NO": 12,
+      "PL": 2,
+      "TW": 11,
+      "US": 259,
+      "XX": 271
     }
   },
   "pipeline": {
     "layer1_format": {
-      "total": 3457,
-      "valid": 3048,
-      "invalid": 409,
-      "cdn_plain": 476,
+      "total": 3450,
+      "valid": 2952,
+      "invalid": 498,
+      "cdn_plain": 458,
       "top_reasons": {
-        "security نامعتبر: none": 328,
-        "security نامعتبر: ": 37,
-        "reality بدون pbk": 33,
+        "security نامعتبر: none": 417,
+        "security نامعتبر: ": 34,
+        "reality بدون pbk": 34,
         "UUID نامعتبر: 1lpxy6haqm": 2,
         "UUID نامعتبر: ": 2
       }
     },
     "layer2_dedup": {
-      "total": 3048,
-      "unique": 2844,
+      "total": 2952,
+      "unique": 2777,
       "exact_dups": 0,
-      "norm_dups": 128,
-      "fp_dups": 76
+      "norm_dups": 112,
+      "fp_dups": 63
     },
     "layer3_tcp": {
-      "total": 2844,
-      "connected": 2238,
-      "failed": 606,
+      "total": 2777,
+      "connected": 2132,
+      "failed": 645,
       "unparsable": 0,
-      "endpoints_total": 2131,
-      "endpoints_alive": 1553,
+      "endpoints_total": 2086,
+      "endpoints_alive": 1476,
       "attempts_required": 2,
-      "avg_latency_ms": 92.3,
-      "duration_seconds": 20.2
+      "avg_latency_ms": 133.4,
+      "duration_seconds": 22.2
     },
     "layer4_iran": {
-      "total": 2238,
-      "passed": 13,
-      "failed": 2225,
+      "total": 2132,
+      "passed": 2131,
+      "failed": 1,
       "skipped": false,
-      "endpoints_total": 1553,
-      "endpoints_checked": 600,
-      "endpoints_alive": 9,
+      "endpoints_total": 1476,
+      "endpoints_checked": 118,
+      "endpoints_alive": 87,
+      "endpoints_blocked": 1,
+      "endpoints_unknown": 1388,
+      "verified": 115,
+      "unverified": 2016,
       "nodes": [
         "ir1.node.check-host.net",
+        "ir2.node.check-host.net",
         "ir3.node.check-host.net",
-        "ir5.node.check-host.net"
+        "ir4.node.check-host.net",
+        "ir5.node.check-host.net",
+        "ir7.node.check-host.net",
+        "ir8.node.check-host.net"
       ],
       "top_reasons": {
-        "submit: HTTP 429": 586,
-        "از ایران بسته است": 5
+        "api: HTTP 429": 30,
+        "از ایران بسته است": 1
       },
-      "api_errors": 586
+      "api_errors": 30,
+      "rate_limited": 30,
+      "stopped_rate_limited": true
     },
     "layer5_tls": {
-      "total": 13,
-      "passed": 12,
-      "failed": 1,
-      "avg_tls_ms": 127.9
+      "total": 2131,
+      "passed": 2083,
+      "failed": 48,
+      "avg_tls_ms": 333.0
     },
     "layer6_geo": {
-      "total": 12,
-      "passed": 12,
-      "failed": 0,
-      "unknown_country": 0,
+      "total": 2083,
+      "passed": 2069,
+      "failed": 14,
+      "unknown_country": 627,
       "countries": {
-        "US": 12
+        "US": 901,
+        "GB": 165,
+        "PL": 4,
+        "AE": 1,
+        "??": 627,
+        "NL": 170,
+        "LT": 1,
+        "RS": 7,
+        "BZ": 2,
+        "SG": 2,
+        "RU": 1,
+        "DE": 64,
+        "CH": 2,
+        "CR": 1,
+        "NZ": 2,
+        "CA": 10,
+        "JP": 47,
+        "FR": 18,
+        "BE": 2,
+        "KR": 5,
+        "ES": 2,
+        "CZ": 1,
+        "TW": 12,
+        "NO": 13,
+        "AT": 4,
+        "AU": 3,
+        "IT": 2
       }
     },
     "layer7_http": {
-      "total": 12,
-      "passed": 2,
-      "failed": 10,
+      "total": 1500,
+      "passed": 915,
+      "failed": 585,
       "rounds": 3,
       "round_stats": [
         {
           "round": 1,
-          "input": 12,
-          "passed": 2,
-          "failed": 10,
-          "duration_seconds": 10.2
+          "input": 1500,
+          "passed": 923,
+          "failed": 577,
+          "duration_seconds": 611.8
         },
         {
           "round": 2,
-          "input": 2,
-          "passed": 2,
-          "failed": 0,
-          "duration_seconds": 0.2
+          "input": 923,
+          "passed": 918,
+          "failed": 5,
+          "duration_seconds": 163.7
         },
         {
           "round": 3,
-          "input": 2,
-          "passed": 2,
-          "failed": 0,
-          "duration_seconds": 0.2
+          "input": 918,
+          "passed": 915,
+          "failed": 3,
+          "duration_seconds": 137.2
         }
       ],
-      "avg_ms": 29.3,
-      "best_ms": 26.7,
+      "avg_ms": 840.2,
+      "best_ms": 36.0,
       "top_reasons": {
-        "همه URL ها fail شدن": 7,
-        "xray بالا نیامد: a256\". Please update your config(s) according to release note and documentation.": 3
+        "همه URL ها fail شدن": 565,
+        "xray بالا نیامد: a256\". Please update your config(s) according to release note and documentation.": 12,
+        "xray بالا نیامد: hysteria2://h_b9x3942fj9x_kpx3914kq_nz934hfg_rt@103.246.248.234:8080/?insecure=1": 1
       },
-      "not_tested": 0
+      "not_tested": 569
     },
     "summary": {
       "funnel": [
-        3457,
-        3048,
-        2844,
-        2238,
-        13,
-        12,
-        12,
-        2
+        3450,
+        2952,
+        2777,
+        2132,
+        2131,
+        2083,
+        2069,
+        915
       ],
-      "final": 2,
-      "iran_verified": 2
+      "final": 915,
+      "iran_verified": 54
     }
   }
 }

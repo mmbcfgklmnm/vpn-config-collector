@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import cdn, tg_md, vless
+from src.clean_ip import REVIVE_MARK
 from src.config import CHANNEL_USERNAME
 
 # پرچم از کد دوحرفی: هر حرف → regional indicator symbol.
@@ -91,6 +92,40 @@ def quality(latency_ms: float) -> str:
     return "🔴 کند"
 
 
+def stability_text(loss_pct: float, jitter_ms: float = -1.0) -> str:
+    """جمله‌ی پایداری از افت بسته و لرزش.
+
+    ‏-1 یعنی «اندازه‌گیری نشد» و در آن حالت رشته‌ی خالی برمی‌گردد: کارت هیچ
+    ادعایی نمی‌کند، نه «پایدار» و نه «ناپایدار». همان قاعده‌ی همیشگی —
+    «تست نشد» ≠ «رد شد» — و برعکسش هم درست است: تست‌نشده «سالم» نیست.
+
+    آستانه‌ها به خواسته‌ی کاربر افت‌محورند نه پینگ‌محور: «نودی با پینگ ۱۰۰ms
+    و ۰٪ افت از نودی با پینگ ۵۰ms و ۲۰٪ افت بسیار ارزشمندتر است.»
+    """
+    if loss_pct is None or loss_pct < 0:
+        return ""
+    if loss_pct == 0:
+        label = "🟢 پایدار — بدون افت بسته"
+    elif loss_pct <= 5:
+        label = f"🟢 پایدار — افت {round(loss_pct)}%"
+    elif loss_pct <= 15:
+        label = f"🟡 افت جزئی — {round(loss_pct)}%"
+    else:
+        label = f"🔴 ناپایدار — افت {round(loss_pct)}%"
+    if jitter_ms is not None and jitter_ms >= 0:
+        label += f"  •  لرزش {round(jitter_ms)}ms"
+    return label
+
+
+def speed_text(kbps: float) -> str:
+    """سرعت خوانا؛ ۰ یعنی اندازه‌گیری نشد و چیزی چاپ نمی‌شود."""
+    if not kbps or kbps <= 0:
+        return ""
+    if kbps >= 1024:
+        return f"{kbps / 1024:.1f} MB/s"
+    return f"{round(kbps)} KB/s"
+
+
 def country_text(country: str) -> str:
     code = (country or "").strip().upper()
     if not code or code == "??":
@@ -120,6 +155,12 @@ def describe(config: str) -> Dict[str, object]:
         "country": country,
         "latency_ms": 0.0 if latency == float("inf") else latency,
         "iran_ms": iran_ms,
+        "loss_pct": vless.get_loss_pct(config),
+        "jitter_ms": vless.get_jitter_ms(config),
+        "speed_kbps": vless.get_speed_kbps(config),
+        # ورودی احیاشده: آدرس یک IP تمیز CF است و Host/SNI مسیر اصلی را
+        # نگه داشته. کاربر باید بداند، وگرنه «IP مستقیم» بودنِ آدرس گیج‌کننده است.
+        "revived": REVIVE_MARK in vless.split_fragment(config)[1],
         "cdn": cdn.classify(host, port) if host else "ip",
         "is_cdn": bool(host) and cdn.classify(host, port) in ("cloudflare", "cdn"),
     }
@@ -142,9 +183,19 @@ def spec_lines(config: str, spec: Optional[Dict] = None) -> List[str]:
     latency = float(spec["latency_ms"] or 0)
     if latency > 0:
         lines.append(f"⚡️ تأخیر تونل: {round(latency)}ms  •  {quality(latency)}")
+    stability = stability_text(
+        float(spec.get("loss_pct", -1.0)), float(spec.get("jitter_ms", -1.0))
+    )
+    if stability:
+        lines.append(f"📶 پایداری: {stability}")
+    speed = speed_text(float(spec.get("speed_kbps") or 0))
+    if speed:
+        lines.append(f"⬇️ سرعت دانلود: {speed}")
     iran_ms = float(spec["iran_ms"] or 0)
     if iran_ms > 0:
         lines.append(f"🇮🇷 دسترسی از ایران: ✅ تأییدشده ({round(iran_ms)}ms)")
+    if spec.get("revived"):
+        lines.append("♻️ ورودی احیاشده با IP تمیز کلودفلر (Host/SNI اصلی حفظ شده)")
     return lines
 
 
@@ -188,6 +239,16 @@ def one_line(config: str) -> str:
     latency = float(spec["latency_ms"] or 0)
     if latency > 0:
         bits.append(f"{round(latency)}ms")
+    loss = float(spec.get("loss_pct", -1.0))
+    if loss == 0:
+        bits.append("🟢")                      # پایدارِ اندازه‌گیری‌شده
+    elif loss > 0:
+        bits.append(f"P{round(loss)}%")
+    speed = speed_text(float(spec.get("speed_kbps") or 0))
+    if speed:
+        bits.append(speed)
     if float(spec["iran_ms"] or 0) > 0:
         bits.append("🇮🇷")
+    if spec.get("revived"):
+        bits.append("♻️")
     return " • ".join(bits) + f" — {tg_md.strip_md(spec['name'], 24)}"

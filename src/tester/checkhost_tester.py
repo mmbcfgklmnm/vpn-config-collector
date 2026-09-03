@@ -300,6 +300,30 @@ async def check_endpoint(
     return 0, 0.0, "از ایران بسته است"
 
 
+async def iran_latency(endpoints: List[str]) -> Dict[str, float]:
+    """داوری چند endpoint خارج از دستهٔ اصلی → {endpoint: ms}.
+
+    برای تأیید «IP تمیز» لازم است: چند IP کلودفلر را از نودهای ایرانی
+    می‌سنجد تا کانفیگ‌های احیاشده روی آدرسی سوار نشوند که خودش بسته است.
+    عمداً یک تابع کوچک و مستقل است — دستهٔ اصلی سهمیه و بودجهٔ خودش را دارد
+    و قاطی کردنشان باعث می‌شد یک IP بد، بودجهٔ کانفیگ‌ها را بخورد.
+    ‏۰ یعنی «بسته یا نامعلوم»؛ فراخوان فقط عددِ بزرگ‌تر از صفر را باور می‌کند.
+    """
+    if SKIP_CHECKHOST or not CHECKHOST_NODES or not endpoints:
+        return {}
+    gate = _Gate(CHECKHOST_MIN_GAP_SEC, CHECKHOST_MAX_GAP_SEC)
+    out: Dict[str, float] = {}
+    connector = aiohttp.TCPConnector(limit=2)
+    timeout = aiohttp.ClientTimeout(total=CHECKHOST_TIMEOUT_SEC + 20)
+    async with aiohttp.ClientSession(
+        connector=connector, timeout=timeout, headers=_headers()
+    ) as session:
+        for endpoint in endpoints:
+            nodes_ok, ms, _ = await check_endpoint(session, endpoint, gate)
+            out[endpoint] = ms if nodes_ok else 0.0
+    return out
+
+
 async def check_iran_batch(
     configs: List[str],
 ) -> Tuple[List[Tuple[str, float]], dict]:

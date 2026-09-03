@@ -101,13 +101,30 @@ def parse(config: str) -> Optional[Vless]:
 
 # ─── برچسب‌گذاری (کشور/تأخیر در fragment) ─────────────────────
 
-def build_tag(latency_ms: float = 0, country: str = "", iran_ms: float = 0) -> str:
-    """ساخت بخش برچسب: مثلاً "NL|84ms|IR212".
+def build_tag(
+    latency_ms: float = 0,
+    country: str = "",
+    iran_ms: float = 0,
+    loss_pct: float = -1.0,
+    jitter_ms: float = -1.0,
+    speed_kbps: float = 0.0,
+) -> str:
+    """ساخت بخش برچسب: مثلاً "NL|84ms|IR212|P0%|J9ms|S430KB".
 
     iran_ms تأخیر اندازه‌گیری‌شده از نودهای ایرانی check-host است. داخل
     fragment ذخیره می‌شود نه در فایل جداگانه، چون fragment همراه خود لینک
     سفر می‌کند: ربات و کانال هر دو فقط valid.txt را می‌خوانند و بدون fetch
     دوم می‌دانند این کانفیگ از ایران تست شده است.
+
+    سه فیلد تازه — همه از لایه ۷ و همه با پیشوندی که با اسکنرهای قبلی
+    برخورد نکند:
+      P0%    افت بسته (packet loss). ‏-1 یعنی اندازه‌گیری نشده، و ۰٪ خودش
+             یک مقدار معنادار است، پس نمی‌شود مثل بقیه با ۰ «نامعلوم» را
+             نشان داد.
+      J9ms   لرزش (jitter). با اسکنر تأخیر برخورد نمی‌کند چون get_latency
+             شرط «همه‌ی کاراکترهای قبل از ms رقم باشند» را می‌گذارد.
+      S430KB سرعت دانلود بر ثانیه. دو حرفی نیست، پس get_country آن را
+             کد کشور نمی‌خواند.
     """
     parts = []
     if country and country not in ("??", ""):
@@ -116,14 +133,26 @@ def build_tag(latency_ms: float = 0, country: str = "", iran_ms: float = 0) -> s
         parts.append(f"{round(latency_ms)}ms")
     if iran_ms and iran_ms > 0:
         parts.append(f"IR{round(iran_ms)}")
+    if loss_pct is not None and loss_pct >= 0:
+        parts.append(f"P{round(loss_pct)}%")
+    if jitter_ms is not None and jitter_ms >= 0:
+        parts.append(f"J{round(jitter_ms)}ms")
+    if speed_kbps and speed_kbps > 0:
+        parts.append(f"S{round(speed_kbps)}KB")
     return "|".join(parts)
 
 
 def add_tag(
-    config: str, latency_ms: float = 0, country: str = "", iran_ms: float = 0
+    config: str,
+    latency_ms: float = 0,
+    country: str = "",
+    iran_ms: float = 0,
+    loss_pct: float = -1.0,
+    jitter_ms: float = -1.0,
+    speed_kbps: float = 0.0,
 ) -> str:
     """افزودن برچسب به fragment و پاک کردن برچسب قبلی."""
-    tag = build_tag(latency_ms, country, iran_ms)
+    tag = build_tag(latency_ms, country, iran_ms, loss_pct, jitter_ms, speed_kbps)
     if not tag:
         return config
     base, fragment = split_fragment(config)
@@ -182,6 +211,45 @@ def get_iran_ms(config: str) -> float:
 def is_iran_verified(config: str) -> bool:
     """آیا این کانفیگ برچسب تأیید ایران دارد؟"""
     return get_iran_ms(config) > 0
+
+
+def _tag_parts(config: str) -> List[str]:
+    _, fragment = split_fragment(config)
+    return [p.strip() for p in fragment.split("|")[1:]]
+
+
+def get_loss_pct(config: str) -> float:
+    """افت بسته از برچسب (P12%). ‏-1 یعنی اندازه‌گیری نشده.
+
+    چرا -1 و نه ۰: صفر درصد افت *بهترین* حالت است. اگر «نامعلوم» را هم صفر
+    بگذاریم، کانفیگ تست‌نشده در مرتب‌سازی بالای کانفیگ تست‌شده می‌نشیند.
+    """
+    for part in _tag_parts(config):
+        if part.startswith("P") and part.endswith("%") and part[1:-1].isdigit():
+            return float(part[1:-1])
+    return -1.0
+
+
+def get_jitter_ms(config: str) -> float:
+    """لرزش از برچسب (J9ms). ‏-1 یعنی اندازه‌گیری نشده."""
+    for part in _tag_parts(config):
+        if part.startswith("J") and part.endswith("ms") and part[1:-2].isdigit():
+            return float(part[1:-2])
+    return -1.0
+
+
+def get_speed_kbps(config: str) -> float:
+    """سرعت دانلود از برچسب (S430KB) به KB/s. ‏۰ یعنی اندازه‌گیری نشده."""
+    for part in _tag_parts(config):
+        if part.startswith("S") and part.endswith("KB") and part[1:-2].isdigit():
+            return float(part[1:-2])
+    return 0.0
+
+
+def is_stable(config: str, max_loss_pct: float = 0.0) -> bool:
+    """«پایدار» = افت بسته اندازه‌گیری شده و از سقف بیشتر نیست."""
+    loss = get_loss_pct(config)
+    return 0 <= loss <= max_loss_pct
 
 
 def short_id(config: str) -> str:

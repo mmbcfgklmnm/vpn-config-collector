@@ -16,11 +16,17 @@ VPN Config Collector v2 — Pipeline ۷ لایه
 ترتیب لایه‌ها و دلیلش
 ─────────────────────
 ۱ فرمت → ۲ حذف تکراری → ۳ TCP (فیلتر سخت) → ۴ دسترسی از ایران →
-۵ TLS → ۶ Geo → ۷ HTTP واقعی با xray در چند دور
+۴b احیای کلودفلری با IP تمیز → ۵ TLS → ۶ Geo →
+۷ تأخیر واقعی + پایداری + سرعت با xray در چند دور
 
 TCP قبل از check-host است چون محلی و ارزان است و سهمیه‌ی check-host را
 روی سرورهای مرده هدر نمی‌دهد. TLS/Geo بعد از check-host هستند چون آن‌جا
 پول کوچک شده و هزینه‌شان ناچیز است.
+
+لایه ۴b شماره‌ی جدا ندارد چون صافی نیست: کانفیگ‌هایی که لایه ۴ «بسته»
+اعلام کرد و روی CDN هستند را با IP تمیز کلودفلر برمی‌گرداند و نتیجه را
+دوباره از ایران می‌سنجد. پس هیچ‌وقت پول را بزرگ‌تر از ورودی لایه ۴
+نمی‌کند و funnel نزولی می‌ماند.
 
 اصلاحات نسخه‌های قبلی که حفظ شده‌اند:
   • SKIP_* از config خوانده میشن (نه os.getenv مستقیم).
@@ -41,17 +47,17 @@ from typing import Dict, List, Tuple
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import outputs, vless
+from src import clean_ip, outputs, vless
 from src.config import (
-    CONFIGS_DIR, MAX_HTTP_TEST, POOL_MAX, PUBLISH_AFTER_COLLECT, SKIP_TELEGRAM,
-    SKIP_XRAY, STATS_FILE,
+    CF_CLEAN_IP_ENABLED, CONFIGS_DIR, MAX_HTTP_TEST, POOL_MAX,
+    PUBLISH_AFTER_COLLECT, SKIP_TELEGRAM, SKIP_XRAY, STATS_FILE,
 )
 from src.logger import get_logger
 from src.publisher.publisher import Publisher
 from src.scraper.github_scraper import scrape_github
 from src.scraper.telegram_scraper import scrape_telegram
 from src.scraper.web_scraper import scrape_web
-from src.tester.checkhost_tester import check_iran_batch
+from src.tester.checkhost_tester import check_iran_batch, iran_latency
 from src.tester.deduplicator import deduplicate
 from src.tester.format_validator import filter_by_format
 from src.tester.geo_checker import check_geo_batch
@@ -106,6 +112,72 @@ async def collect() -> List[str]:
     return unique
 
 
+async def _verify_clean_ips(ips: List[str]) -> Dict[str, float]:
+    """داوری IP های نامزد از نودهای ایرانی → {ip: ms}.
+
+    check-host روی «host:port» کار می‌کند، پس IP ها به endpoint تبدیل و
+    جواب دوباره به IP برگردانده می‌شود. پورت مرجع SCAN_PORT است چون IP های
+    انی‌کست CF روی همه‌ی پورت‌های مجموعه‌شان یک‌جور رفتار می‌کنند.
+    """
+    judged = await iran_latency([f"{ip}:{clean_ip.SCAN_PORT}" for ip in ips])
+    return {
+        endpoint.rsplit(":", 1)[0]: ms for endpoint, ms in judged.items()
+    }
+
+
+async def revive_blocked(
+    before: List[str], survivors: List[str]
+) -> Tuple[List[Tuple[str, float]], Dict]:
+    """لایه ۴b — کانفیگ کلودفلری با ورودیِ فیلترشده را با IP تمیز برمی‌گرداند.
+
+    فقط روی کانفیگ‌هایی اجرا می‌شود که لایه ۴ حکم «از ایران بسته است» داده؛
+    به کانفیگ سالم دست نمی‌زند (عوض کردن آدرسِ چیزی که کار می‌کند فقط ریسک
+    است). Host و SNI دست‌نخورده می‌مانند تا مسیر CDN حفظ شود و فقط آدرسِ
+    ورودی عوض می‌شود.
+
+    خروجی دوباره از check-host رد می‌شود و فقط چیزی که از ایران جواب داد
+    برمی‌گردد: کانفیگ احیاشده یک *حدس* است و حدس منتشر نمی‌شود.
+
+    شمارنده‌ی funnel دست نمی‌خورد. این یک مرحله‌ی جبرانی داخل لایه ۴ است نه
+    صافیِ تازه؛ اضافه کردنش به funnel نمودار README را می‌شکست.
+    """
+    stats: Dict = {"enabled": CF_CLEAN_IP_ENABLED, "blocked": 0, "candidates": 0}
+    if not CF_CLEAN_IP_ENABLED:
+        return [], stats
+
+    kept = set(survivors)
+    blocked = [c for c in before if c not in kept]
+    candidates = [c for c in blocked if clean_ip.can_revive(c)]
+    stats.update({"blocked": len(blocked), "candidates": len(candidates)})
+    if not candidates:
+        return [], stats
+
+    logger.info(
+        f"4️⃣ب  احیای CDN — {len(candidates)} نامزد از {len(blocked)} ورودی بسته"
+    )
+    ips = await clean_ip.find_clean_ips(verify=_verify_clean_ips)
+    stats["clean_ips"] = len(ips)
+    if not ips:
+        logger.warning("   IP تمیزی تأیید نشد — احیا انجام نشد\n")
+        return [], stats
+
+    revived = clean_ip.revive_batch(candidates, ips)
+    stats["revived"] = len(revived)
+    if not revived:
+        return [], stats
+
+    rechecked, s4b = await check_iran_batch(revived)
+    # ms > 0 یعنی check-host واقعاً از ایران وصل شد. بی‌حکم‌ها (ms == 0) کنار
+    # گذاشته می‌شوند: برای کانفیگ اصلی «بی‌حکم» یعنی شک، ولی برای کانفیگی که
+    # خودمان ساخته‌ایم یعنی هیچ دلیلی برای انتشارش نداریم.
+    alive = [(cfg, ms) for cfg, ms in rechecked if ms > 0]
+    stats["passed"] = len(alive)
+    stats["recheck"] = s4b
+    clean_ip.remember([clean_ip.ip_of(cfg) for cfg, _ in alive])
+    logger.info(f"   → {len(alive)} کانفیگ احیا شد\n")
+    return alive, stats
+
+
 async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
     logger.info("\n🔬 Pipeline ۷ لایه")
     logger.info(f"   ورودی: {len(configs)}\n")
@@ -144,10 +216,21 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         return [], stats
 
     logger.info("4️⃣  دسترسی از ایران (check-host)...")
+    before_iran = list(configs)
     configs_iran, s4 = await check_iran_batch(configs)
     stats["layer4_iran"] = s4
     iran_ms_map = dict(configs_iran)
     configs = [c for c, _ in configs_iran]
+
+    # لایه ۴b قبل از شمارش funnel است تا نمودار نزولی بماند: احیاشده‌ها
+    # زیرمجموعه‌ی همان چیزی هستند که لایه ۴ رد کرد، نه ورودی تازه.
+    revived, s4b = await revive_blocked(before_iran, configs)
+    if s4b:
+        stats["layer4b_revive"] = s4b
+    for cfg, ms in revived:
+        iran_ms_map[cfg] = ms
+        configs.append(cfg)
+
     counts.append(len(configs))
     logger.info(f"   → {len(configs)}\n")
     if not configs:
@@ -173,9 +256,18 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
     if not configs:
         return [], stats
 
+    # سنجه‌های لایه ۷ (افت بسته، لرزش، سرعت) — از کانال کناری _quality پر
+    # می‌شود. تا آن‌جا خالی می‌ماند، پس کانفیگ تست‌نشده برچسب پایداری نمی‌گیرد:
+    # «۰٪ افت» ادعای بزرگی است و بدون اندازه‌گیری نوشتنش دروغ است.
+    quality: Dict[str, dict] = {}
+
     def tag(cfg: str, latency: float) -> str:
+        q = quality.get(cfg) or {}
         return vless.add_tag(
-            cfg, latency, country_map.get(cfg, ""), iran_ms_map.get(cfg, 0.0)
+            cfg, latency, country_map.get(cfg, ""), iran_ms_map.get(cfg, 0.0),
+            loss_pct=q.get("loss_pct", -1.0),
+            jitter_ms=q.get("jitter_ms", -1.0),
+            speed_kbps=q.get("speed_kbps", 0.0),
         )
 
     if SKIP_XRAY:
@@ -203,13 +295,16 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         not_tested = len(ordered) - len(candidates)
         if not_tested:
             logger.warning(
-                f"7️⃣  تست HTTP روی {len(candidates)} کانفیگ سریع‌تر — "
+                f"7️⃣  تست تونل روی {len(candidates)} کانفیگ سریع‌تر — "
                 f"{not_tested} تا به سقف MAX_HTTP_TEST خوردند و publish نمیشن"
             )
         else:
-            logger.info("7️⃣  تست HTTP واقعی (چند دور)...")
+            logger.info("7️⃣  تأخیر واقعی + پایداری + سرعت (چند دور)...")
 
         configs_ms, s7 = await http_test_batch(candidates)
+        # سنجه‌ها از stats بیرون کشیده می‌شوند تا در stats.json تکرار نشوند؛
+        # جای واقعیِ آن‌ها برچسب خودِ کانفیگ است.
+        quality.update(s7.pop("_quality", {}))
         s7["not_tested"] = not_tested
         stats["layer7_http"] = s7
         logger.info(f"   → {len(configs_ms)}\n")
@@ -224,14 +319,29 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         ]
 
     reserve = reserve[:POOL_MAX]
-    final.sort(key=vless.get_latency_ms)
+
+    # ترتیب نهایی: پایداری قبل از سرعتِ خام — خواسته‌ی صریح کاربر. «نودی با
+    # پینگ ۱۰۰ms و ۰٪ افت از نودی با پینگ ۵۰ms و ۲۰٪ افت ارزشمندتر است.»
+    # نامعلوم وسط می‌نشیند: نه پاداشِ ادعای نکرده می‌گیرد، نه جریمه‌ی افتی
+    # که اندازه‌گیری نشده.
+    def rank(cfg: str) -> Tuple[float, float]:
+        loss = vless.get_loss_pct(cfg)
+        bucket = 0.0 if loss == 0 else (1.0 if loss < 0 else 2.0)
+        return bucket, vless.get_latency_ms(cfg)
+
+    final.sort(key=rank)
     counts.append(len(final))
     iran_verified = sum(1 for c in final if vless.is_iran_verified(c))
+    speeds = [s for s in (vless.get_speed_kbps(c) for c in final) if s > 0]
     stats["summary"] = {
         "funnel": counts,
         "final": len(final),
         "iran_verified": iran_verified,
         "reserve": len(reserve),
+        "revived": stats.get("layer4b_revive", {}).get("passed", 0),
+        "stable": sum(1 for c in final if vless.is_stable(c)),
+        "speed_measured": len(speeds),
+        "avg_speed_kbps": round(sum(speeds) / len(speeds), 1) if speeds else 0.0,
     }
     # کانال پشتیِ برگرداندن ذخیره بدون شکستن قرارداد دوعضوی این تابع.
     # main() فوراً pop می‌کند تا در stats.json ننشیند (چند صد لینک VLESS
@@ -242,7 +352,16 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         f"\n{'=' * 55}\n✅ Pipeline کامل\n"
         f"   {' → '.join(str(n) for n in counts)}\n"
         f"   🇮🇷 تأییدشده از ایران: {iran_verified}/{len(final)}\n"
-        f"   🗃️  پول ذخیره (تست‌نشده): {len(reserve)}\n"
+        f"   💚 بدون افت بسته: {stats['summary']['stable']}/{len(final)}"
+        + (
+            f" | ⚡ میانگین سرعت: {stats['summary']['avg_speed_kbps']} KB/s"
+            if speeds else ""
+        )
+        + (
+            f"\n   ♻️  احیاشده با IP تمیز: {stats['summary']['revived']}"
+            if stats["summary"]["revived"] else ""
+        )
+        + f"\n   🗃️  پول ذخیره (تست‌نشده): {len(reserve)}\n"
         f"{'=' * 55}"
     )
     return final, stats

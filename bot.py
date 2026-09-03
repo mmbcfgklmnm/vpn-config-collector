@@ -43,7 +43,7 @@ import aiohttp
 import qrcode
 from telegram import (
     BotCommand, BotCommandScopeChat, InlineKeyboardMarkup, ReplyKeyboardMarkup,
-    Update,
+    ReplyKeyboardRemove, Update,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -52,6 +52,7 @@ from telegram.ext import (
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src import donations, tg_md, tg_ui, vless
+from src.clean_ip import REVIVE_MARK
 from src.config import (
     ADMIN_IDS, AUTO_PUBLISH, BOT_STATE_FILE, DONATE_ENABLED,
     DONATE_MAX_PER_DAY, DONATE_MAX_PER_MSG, GITHUB_REPO, GITHUB_TOKEN,
@@ -356,6 +357,9 @@ BTN_DONATE = "🎁 اهدای کانفیگ"
 BTN_STATS = "📊 آمار"
 BTN_QR = "📷 QR"
 BTN_HELP = "❓ راهنما"
+# کلید خودِ کیبورد. بعد از زدنش کیبورد می‌رود، پس خودِ دکمه هم می‌رود —
+# راه برگشت دستور /keyboard است و متن پیامِ خداحافظی همان را می‌گوید.
+BTN_KEYBOARD = "⌨️ پنهان کردن دکمه‌ها"
 # ردیف ادمین — فقط برای کسی که در ADMIN_IDS است ساخته می‌شود. اینها همان
 # دستورهای ادمین‌اند، پس اگر کاربر عادی متنشان را دستی تایپ کند، دکوراتور
 # admin_only جلویش را می‌گیرد؛ کیبورد لایه‌ی راحتی است نه لایه‌ی امنیت.
@@ -363,18 +367,29 @@ BTN_A_PUBLISH = "📤 انتشار دستی"
 BTN_A_STATUS = "🖥️ وضعیت"
 BTN_A_DONATIONS = "🎁 صف اهدا"
 BTN_A_TOGGLE = "⏸️ مکث انتشار"
+BTN_A_QUALITY = "📶 کیفیت پول"
+BTN_A_HEALTH = "🩺 سلامت منابع"
 
+# هر دکمه رنگ دارد (خواسته‌ی کاربر) ولی رنگ‌ها بی‌قاعده نیستند، وگرنه وقتی
+# همه‌چیز برجسته باشد هیچ‌چیز برجسته نیست:
+#   سبز  = چیزی به تو *می‌دهد* (کانفیگ، اشتراک، اهدا)
+#   آبی  = گشتن و دیدن (کشور، لیست، آمار، QR، راهنما)
+#   سرخ  = چیزی را *خاموش* می‌کند (پنهان کردن کیبورد، مکث انتشار)
 _USER_ROWS = [
-    [tg_ui.kb(BTN_BEST, tg_ui.SUCCESS), tg_ui.kb(BTN_IRAN, tg_ui.PRIMARY)],
-    [tg_ui.kb(BTN_COUNTRY, tg_ui.PRIMARY), tg_ui.kb(BTN_RANDOM)],
-    [tg_ui.kb(BTN_LIST), tg_ui.kb(BTN_SUB, tg_ui.PRIMARY)],
-    [tg_ui.kb(BTN_DONATE, tg_ui.SUCCESS), tg_ui.kb(BTN_STATS)],
-    [tg_ui.kb(BTN_QR), tg_ui.kb(BTN_HELP)],
+    [tg_ui.kb(BTN_BEST, tg_ui.SUCCESS), tg_ui.kb(BTN_IRAN, tg_ui.SUCCESS)],
+    [tg_ui.kb(BTN_COUNTRY, tg_ui.PRIMARY), tg_ui.kb(BTN_RANDOM, tg_ui.SUCCESS)],
+    [tg_ui.kb(BTN_LIST, tg_ui.PRIMARY), tg_ui.kb(BTN_SUB, tg_ui.SUCCESS)],
+    [tg_ui.kb(BTN_DONATE, tg_ui.SUCCESS), tg_ui.kb(BTN_STATS, tg_ui.PRIMARY)],
+    [tg_ui.kb(BTN_QR, tg_ui.PRIMARY), tg_ui.kb(BTN_HELP, tg_ui.PRIMARY)],
+    [tg_ui.kb(BTN_KEYBOARD, tg_ui.DANGER)],
 ]
 
 _ADMIN_ROWS = [
-    [tg_ui.kb(BTN_A_PUBLISH, tg_ui.DANGER), tg_ui.kb(BTN_A_STATUS)],
-    [tg_ui.kb(BTN_A_DONATIONS), tg_ui.kb(BTN_A_TOGGLE, tg_ui.DANGER)],
+    [tg_ui.kb(BTN_A_PUBLISH, tg_ui.DANGER), tg_ui.kb(BTN_A_STATUS, tg_ui.PRIMARY)],
+    [tg_ui.kb(BTN_A_DONATIONS, tg_ui.PRIMARY),
+     tg_ui.kb(BTN_A_TOGGLE, tg_ui.DANGER)],
+    [tg_ui.kb(BTN_A_QUALITY, tg_ui.PRIMARY),
+     tg_ui.kb(BTN_A_HEALTH, tg_ui.PRIMARY)],
 ]
 
 
@@ -390,10 +405,34 @@ def _keyboard(rows) -> ReplyKeyboardMarkup:
 MAIN_KEYBOARD = _keyboard(_USER_ROWS)
 ADMIN_KEYBOARD = _keyboard(_USER_ROWS + _ADMIN_ROWS)
 
+# کلید حالتِ کیبورد در حافظه‌ی همان کاربر. عمداً روی دیسک نمی‌رود: ذخیره‌ی
+# ترجیح هر کاربر یعنی نگه‌داشتن شناسه‌ی تلگرامش روی دیسک، و بخش اهدا برای
+# همین شناسه‌ها را هش می‌کند. یک ترجیح ظاهری ارزش آن معاوضه را ندارد؛
+# با restart کیبورد برمی‌گردد که خودش پیش‌فرض درست است.
+KEYBOARD_HIDDEN = "keyboard_hidden"
+
 
 def keyboard_for(uid: Optional[int]) -> ReplyKeyboardMarkup:
-    """کیبورد بر اساس نقش — ادمین دو ردیف اضافه می‌بیند."""
+    """کیبورد بر اساس نقش — ادمین سه ردیف اضافه می‌بیند."""
     return ADMIN_KEYBOARD if is_admin(uid) else MAIN_KEYBOARD
+
+
+def keyboard_hidden(context) -> bool:
+    data = getattr(context, "user_data", None)
+    return bool(data and data.get(KEYBOARD_HIDDEN))
+
+
+def markup_for(update: Update, context) -> Optional[ReplyKeyboardMarkup]:
+    """کیبورد، یا None اگر کاربر خودش پنهانش کرده.
+
+    بدون این، هر پیامی که `reply_markup=keyboard_for(...)` می‌فرستد کیبوردِ
+    پنهان‌شده را همان لحظه برمی‌گرداند و دکمه‌ی پنهان‌کردن بی‌اثر به نظر
+    می‌رسد. None یعنی «به کیبورد دست نزن»، پس حالت انتخابیِ کاربر می‌ماند.
+    """
+    if keyboard_hidden(context):
+        return None
+    user = update.effective_user
+    return keyboard_for(user.id if user else None)
 
 
 async def reply(update: Update, text: str, **kwargs) -> None:
@@ -468,7 +507,7 @@ def format_config_list(
 def card_keyboard(index: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
+            tg_ui.ikb("📷 QR", tg_ui.PRIMARY, callback_data=f"qr_{index}"),
             tg_ui.ikb("▶️ بعدی", tg_ui.PRIMARY,
                       callback_data=f"get_next_{index + 1}"),
         ],
@@ -491,6 +530,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ts = str(stats.get("timestamp", ""))[:16].replace("T", " ")
     user = update.effective_user
     name = tg_md.strip_md(user.first_name if user else "", 30) or "دوست من"
+    # ‏/start شروع از نو است، پس کیبورد پنهان‌شده هم برمی‌گردد. اگر پرچم را
+    # پاک نکنیم، کیبورد دیده می‌شود ولی حالت ذخیره‌شده «پنهان» می‌ماند و
+    # پیام بعدی دوباره سعی می‌کند مخفی نگهش دارد.
+    if context.user_data is not None:
+        context.user_data.pop(KEYBOARD_HIDDEN, None)
 
     text = (
         f"👋 سلام *{name}*!\n\n"
@@ -500,10 +544,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  ✅ {len(configs)} کانفیگ معتبر\n"
         f"  🇮🇷 {len(iran)} تأییدشده از داخل ایران\n"
         f"  🕐 آخرین آپدیت: {ts or 'نامشخص'}\n\n"
-        f"👇 از دکمه‌های پایین استفاده کن — /help برای همه‌ی دستورها."
+        f"👇 از دکمه‌های پایین استفاده کن — /help برای همه‌ی دستورها.\n"
+        f"⌨️ دکمه‌ها اذیت می‌کنند؟ /keyboard آن‌ها را پنهان و برمی‌گرداند."
     )
     if is_admin(user.id if user else None):
-        text += "\n\n🛠️ *دسترسی ادمین فعال* — دو ردیف آخر کیبورد مخصوص شماست."
+        text += "\n\n🛠️ *دسترسی ادمین فعال* — سه ردیف آخر کیبورد مخصوص شماست."
     await reply(update, text, reply_markup=keyboard_for(user.id if user else None))
 
 
@@ -559,6 +604,8 @@ async def cmd_tls(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if vless.get_security_label(c) == "TLS"
     ]
     await reply(update, format_config_list(configs, "🔒 TLS"))
+
+
 @user_command
 async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     configs = sort_best(load_configs())
@@ -571,7 +618,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
         card(configs[index], index + 1, len(configs)),
         reply_markup=InlineKeyboardMarkup([[
             tg_ui.ikb("🎲 یکی دیگه", tg_ui.PRIMARY, callback_data="random"),
-            tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
+            tg_ui.ikb("📷 QR", tg_ui.PRIMARY, callback_data=f"qr_{index}"),
         ]]),
     )
 
@@ -606,6 +653,8 @@ async def send_qr(update: Update, payload: str, caption: str) -> None:
     except Exception as exc:
         logger.warning(f"ساخت/ارسال QR ناموفق: {exc}")
         await reply(update, "❌ ساخت QR ناموفق بود.")
+
+
 @user_command
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تأخیر اندازه‌گیری‌شده در pipeline (تست زنده نیست)."""
@@ -653,6 +702,8 @@ async def cmd_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [[tg_ui.ikb("📷 QR لینک", tg_ui.PRIMARY, callback_data="qr_sub")]]
         ),
     )
+
+
 @user_command
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = load_stats()
@@ -734,10 +785,14 @@ def country_counts(configs: List[str]) -> Dict[str, int]:
 
 
 def country_keyboard(counts: Dict[str, int]) -> InlineKeyboardMarkup:
-    """سه دکمه در هر ردیف — بیشتر از این روی موبایل متن دکمه بریده می‌شود."""
+    """سه دکمه در هر ردیف — بیشتر از این روی موبایل متن دکمه بریده می‌شود.
+
+    سه کشور پرکانفیگ سبزند و بقیه آبی: عدد کنار پرچم هم همان را می‌گوید، پس
+    رنگ فقط تأکید است نه تنها حامل معنا (کلاینت قدیمی رنگ را نشان نمی‌دهد).
+    """
     buttons = [
         tg_ui.ikb(f"{renderer.flag(code)} {code} ({n})",
-                  tg_ui.PRIMARY if index < 3 else None,
+                  tg_ui.SUCCESS if index < 3 else tg_ui.PRIMARY,
                   callback_data=f"co_{code}")
         for index, (code, n) in enumerate(list(counts.items())[:COUNTRY_BTN_ROWS * 3])
     ]
@@ -933,9 +988,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /sub — لینک اشتراک\n"
         "🔹 /donate — اهدای کانفیگ به کانال 🎁\n"
         "🔹 /stats — آمار کامل pipeline\n"
+        "🔹 /keyboard — پنهان/نمایش دکمه‌های پایین صفحه ⌨️\n"
         "🔹 /whoami — شناسه و نقش من\n\n"
+        "📌 *برچسب‌های روی هر کانفیگ:*\n"
+        "`84ms` تأخیر واقعی تونل | `P0%` افت بسته | `J9ms` لرزش | "
+        "`S430KB` سرعت دانلود | `IR212` جواب از ایران | `♻CF` احیا با IP تمیز\n"
+        "برچسبی که نیست یعنی *اندازه‌گیری نشد* — نه «خوب» و نه «بد».\n\n"
         "💡 *کانفیگ‌ها از ۷ لایه رد شده‌اند:*\n"
-        "فرمت → حذف تکراری → TCP → *دسترسی از ایران* → TLS → Geo → HTTP واقعی\n\n"
+        "فرمت → حذف تکراری → TCP → *دسترسی از ایران* → TLS → Geo → "
+        "تأخیر واقعی + پایداری + سرعت\n\n"
         "🇮🇷 لایه‌ی «دسترسی از ایران» با نودهای ایرانی check-host تست می‌شود؛ "
         "بقیه‌ی لایه‌ها از سرور آمریکا اجرا می‌شوند و فقط سالم بودن سرور را "
         "می‌سنجند. کانفیگ‌های /iran بالاترین شانس باز شدن را دارند.\n\n"
@@ -946,7 +1007,43 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(user.id if user else None):
         text += "\n\n" + admin_help()
-    await reply(update, text, reply_markup=keyboard_for(user.id if user else None))
+    await reply(update, text, reply_markup=markup_for(update, context))
+
+
+@user_command
+async def cmd_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پنهان/نمایش دکمه‌های پایین صفحه — یک دستور برای هر دو جهت.
+
+    هم دکمه‌ی «⌨️ پنهان کردن دکمه‌ها» به این‌جا می‌رسد و هم /keyboard. چون
+    بعد از پنهان شدن دکمه‌ای نمانده، متن پاسخ صریحاً راه برگشت را می‌گوید؛
+    وگرنه کاربر فکر می‌کند ربات را خراب کرده.
+
+    حالت در context.user_data می‌ماند (حافظه، نه دیسک): ذخیره‌ی ترجیح یعنی
+    نگه‌داشتن شناسه‌ی تلگرام کاربر روی دیسک، و این ربات جای دیگری هم آن را
+    ذخیره نمی‌کند (اهداها هش می‌شوند). با restart کیبورد برمی‌گردد.
+    """
+    hide = not keyboard_hidden(context)
+    if context.user_data is not None:
+        if hide:
+            context.user_data[KEYBOARD_HIDDEN] = True
+        else:
+            context.user_data.pop(KEYBOARD_HIDDEN, None)
+
+    user = update.effective_user
+    if hide:
+        await reply(
+            update,
+            "⌨️ دکمه‌ها پنهان شدند.\n"
+            "برای برگرداندنشان /keyboard را بزن (یا /start).\n"
+            "_همه‌ی امکانات با دستور هم کار می‌کنند — /help فهرست کامل است._",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    await reply(
+        update,
+        "⌨️ دکمه‌ها برگشتند 👇",
+        reply_markup=keyboard_for(user.id if user else None),
+    )
 
 
 def admin_help() -> str:
@@ -960,12 +1057,14 @@ def admin_help() -> str:
         "🔸 /publish — یک دوره‌ی انتشار همین حالا\n"
         "🔸 /cycle — گزارش ۵ دوره‌ی آخر\n"
         "🔸 /status — وضعیت ربات و پول‌ها\n"
+        "🔸 /quality — کیفیت اندازه‌گیری‌شده‌ی پول (افت/لرزش/سرعت/احیا)\n"
         "🔸 /health — چرا آخرین اجرا خروجی نداشت\n"
         "🔸 /pause و /resume — مکث/ادامه‌ی *انتشار خودکار*\n"
         "🔸 /on و /off — روشن/خاموش کردن پاسخ به کاربران\n"
         "🔸 /donations — صف اهدا (+ `requeue` و `purge`)\n"
         "🔸 /run — اجرای pipeline در GitHub Actions\n"
-        "🔸 /add و /test — افزودن و تست دستی کانفیگ\n"
+        "🔸 /add — افزودن کانفیگ دستی\n"
+        "🔸 /test — تست کامل یک کانفیگ (تا داخل تونل)\n"
         "🔸 /whoami — شناسه و نقش خودت"
     )
 
@@ -983,6 +1082,7 @@ BUTTON_ROUTES: Dict[str, Callable] = {
     BTN_STATS: cmd_stats,
     BTN_QR: cmd_qr,
     BTN_HELP: cmd_help,
+    BTN_KEYBOARD: cmd_keyboard,
 }
 
 # دکمه‌های ادمین به هندلرهایی وصل می‌شوند که پایین‌تر تعریف شده‌اند، پس این
@@ -1037,6 +1137,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply(update, "🧪 برای تست یک کانفیگ: `/test <لینک>` (فقط ادمین)")
         return
 
+    # متن ناشناس: راهنمای کوتاه. اگر کاربر خودش کیبورد را پنهان کرده،
+    # «از دکمه‌های پایین استفاده کن» دروغ است — پس راه واقعی گفته می‌شود.
+    if keyboard_hidden(context):
+        await reply(update, "❓ /help فهرست دستورها را می‌دهد — "
+                            "یا /keyboard تا دکمه‌ها برگردند.")
+        return
     await reply(update, "👇 از دکمه‌های پایین استفاده کن یا /help را بزن.",
                 reply_markup=keyboard_for(
                     update.effective_user.id if update.effective_user else None))
@@ -1208,6 +1314,84 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"  {item.get('at', '—')} ({item.get('trigger', '—')}): "
                 f"{item.get('sent', 0)}✅ / {item.get('failed', 0)}❌"
             )
+    await reply(update, "\n".join(lines))
+
+
+def _quality_report(configs: List[str]) -> List[str]:
+    """گزارش کیفیتِ *اندازه‌گیری‌شده‌ی* پول — بدون هیچ تست تازه.
+
+    هر عدد این‌جا از برچسب خودِ کانفیگ خوانده می‌شود، پس گزارش رایگان است و
+    به شبکه دست نمی‌زند. دسته‌ی «اندازه‌گیری‌نشده» جدا شمرده می‌شود و در
+    میانگین‌ها نمی‌آید؛ وگرنه پول ذخیره میانگین افت را مصنوعی صفر می‌کرد.
+    """
+    if not configs:
+        return ["_پول خالی است._"]
+
+    losses = [v for v in (vless.get_loss_pct(c) for c in configs) if v >= 0]
+    jitters = [v for v in (vless.get_jitter_ms(c) for c in configs) if v >= 0]
+    speeds = [v for v in (vless.get_speed_kbps(c) for c in configs) if v > 0]
+    latencies = [
+        v for v in (vless.get_latency_ms(c) for c in configs)
+        if v and v != float("inf")
+    ]
+    stable = sum(1 for v in losses if v == 0)
+    revived = sum(1 for c in configs if REVIVE_MARK in vless.split_fragment(c)[1])
+    iran = sum(1 for c in configs if vless.is_iran_verified(c))
+    unmeasured = len(configs) - len(losses)
+
+    def avg(values: List[float]) -> float:
+        return round(sum(values) / len(values), 1) if values else 0.0
+
+    lines = [
+        f"📦 {len(configs)} کانفیگ | 🇮🇷 {iran} تأییدشده از ایران",
+        f"💚 بدون افت بسته: {stable}/{len(losses) or '—'}"
+        + (f" | میانگین افت {avg(losses)}%" if losses else ""),
+        f"📶 لرزش: میانگین {avg(jitters)}ms ({len(jitters)} اندازه‌گیری)"
+        if jitters else "📶 لرزش: اندازه‌گیری نشد",
+        f"⬇️ سرعت: میانگین {avg(speeds)} KB/s ({len(speeds)} اندازه‌گیری)"
+        if speeds else "⬇️ سرعت: اندازه‌گیری نشد",
+        f"⚡️ تأخیر تونل: میانگین {avg(latencies)}ms"
+        + (f" | بهترین {round(min(latencies))}ms" if latencies else ""),
+        f"♻️ احیاشده با IP تمیز کلودفلر: {revived}",
+    ]
+    if unmeasured:
+        lines.append(
+            f"🗃 بدون سنجه‌ی پایداری: {unmeasured} "
+            "(تست‌نشده یا اهدایی — «تست نشد» ≠ «رد شد»)"
+        )
+    return lines
+
+
+@admin_only
+async def cmd_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کیفیت پول از دید سنجه‌های لایه ۷ — افت بسته، لرزش، سرعت، احیا.
+
+    /status می‌گوید «چند کانفیگ داریم»؛ این می‌گوید «چقدر خوب‌اند». هر دو
+    پول جدا گزارش می‌شوند چون فقط پول تأییدشده سنجه دارد و اگر با ذخیره قاطی
+    شود، همان ادعای دروغِ «۰٪ افت» ساخته می‌شود که در کارت‌ها جلویش گرفته شد.
+    """
+    await refresh_cache()
+    lines = ["📶 *کیفیت پول تأییدشده*", ""]
+    lines += _quality_report(load_configs())
+
+    reserve = load_pool_configs()
+    lines += ["", f"🗃 *پول ذخیره (تست‌نشده)* — {len(reserve)} کانفیگ"]
+    if reserve:
+        lines.append(
+            "این‌ها لایه ۶ را پاس کردند ولی به سقف زمانی لایه ۷ خوردند، پس "
+            "سنجه‌ی پایداری ندارند و در کانال با برچسب «تست‌نشده» می‌روند."
+        )
+    stats = load_stats()
+    summary = (stats.get("pipeline") or {}).get("summary") or {}
+    if isinstance(summary, dict) and summary:
+        lines += [
+            "",
+            "🔬 *آخرین اجرای pipeline*",
+            f"funnel: {' → '.join(str(n) for n in summary.get('funnel', []))}",
+            f"💚 بدون افت: {summary.get('stable', 0)} | "
+            f"⚡ میانگین سرعت: {summary.get('avg_speed_kbps', 0)} KB/s | "
+            f"♻️ احیا: {summary.get('revived', 0)}",
+        ]
     await reply(update, "\n".join(lines))
 
 
@@ -1505,9 +1689,46 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except OSError as exc:
         await reply(update, f"❌ خطا: {tg_md.strip_md(exc, 120)}")
+
+
+def _probe_lines(probe) -> List[str]:
+    """خطوط لایه ۷ برای /test — تأخیر واقعی، افت، لرزش، سرعت.
+
+    نبودِ xray روی هاست ربات ⚪ است نه ❌: کانفیگ رد نشده، فقط این‌جا قابل
+    آزمودن نبوده. همان تفکیکی که در کارت مشخصات هم رعایت می‌شود.
+    """
+    if probe.reason == "xray پیدا نشد":
+        return [
+            "⚪ تونل: xray روی این هاست نیست — "
+            "این لایه در GitHub Actions اجرا می‌شود (تست نشد ≠ رد شد)."
+        ]
+    head = (
+        f"{'✅' if probe.ok else '❌'} تونل واقعی: "
+        + (f"{round(probe.delay_ms)}ms  •  {renderer.quality(probe.delay_ms)}"
+           if probe.delay_ms > 0 else tg_md.strip_md(probe.reason or "بی‌جواب", 70))
+    )
+    lines = [head]
+    if not probe.ok and probe.delay_ms > 0 and probe.reason:
+        lines.append(f"   ↳ دلیل رد: {tg_md.strip_md(probe.reason, 70)}")
+    stability = renderer.stability_text(probe.loss_pct, probe.jitter_ms)
+    lines.append(f"📶 پایداری: {stability}" if stability
+                 else "⚪ پایداری: اندازه‌گیری نشد")
+    speed = renderer.speed_text(probe.speed_kbps)
+    lines.append(f"⬇️ سرعت: {speed}" if speed else "⚪ سرعت: اندازه‌گیری نشد")
+    if probe.speed_only_fail:
+        lines.append("ℹ️ همه‌ی probe ها را پاس کرد و فقط روی گیت سرعت افتاد.")
+    return lines
+
+
 @admin_only
 async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تست یک کانفیگ دلخواه: فرمت → TCP → TLS → دسترسی از ایران."""
+    """تست کامل یک کانفیگ: فرمت → TCP → TLS → ایران → *داخل تونل*.
+
+    لایه‌ی آخر همان چیزی است که کاربر خواست جای پینگ TCP بنشیند: ترافیک
+    واقعی از داخل تونل تا یک endpoint‌ ۲۰۴، و از همان چند بسته افت/لرزش/سرعت
+    درمی‌آید. روی هاست ربات معمولاً xray نیست؛ آن حالت ⚪ است نه ❌، چون
+    «تست نشد» ≠ «رد شد» و ادمین نباید کانفیگ سالم را دور بیندازد.
+    """
     if not context.args:
         await reply(update, "❌ کانفیگ رو بعد از /test بفرست.")
         return
@@ -1516,6 +1737,7 @@ async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from src.tester.checkhost_tester import check_endpoint, endpoint_of
     from src.tester.format_validator import validate_vless
+    from src.tester.http_tester import probe_config
     from src.tester.tcp_tester import tcp_connect
     from src.tester.tls_tester import test_tls_single
 
@@ -1550,7 +1772,11 @@ async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as exc:
                 lines.append(f"⚠️ check-host: {tg_md.strip_md(exc, 60)}")
 
+            lines += _probe_lines(await probe_config(cfg))
+
     await reply(update, "🧪 *نتیجه تست*\n\n" + "\n".join(lines))
+
+
 # ─── Callback Queries ─────────────────────────────────────
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1595,7 +1821,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             card(configs[index], index + 1, len(configs)),
             reply_markup=InlineKeyboardMarkup([[
                 tg_ui.ikb("🎲 یکی دیگه", tg_ui.PRIMARY, callback_data="random"),
-                tg_ui.ikb("📷 QR", callback_data=f"qr_{index}"),
+                tg_ui.ikb("📷 QR", tg_ui.PRIMARY, callback_data=f"qr_{index}"),
             ]]),
         )
 
@@ -1683,6 +1909,7 @@ USER_COMMANDS = [
     ("donate", "اهدای کانفیگ", cmd_donate),
     ("stats", "آمار pipeline", cmd_stats),
     ("whoami", "شناسه و نقش من", cmd_whoami),
+    ("keyboard", "پنهان/نمایش دکمه‌ها", cmd_keyboard),
     ("help", "راهنما", cmd_help),
 ]
 
@@ -1693,6 +1920,7 @@ ADMIN_COMMANDS = [
     ("publish", "انتشار یک دوره الان", cmd_publish),
     ("cycle", "گزارش دوره‌های انتشار", cmd_cycle),
     ("status", "وضعیت سیستم", cmd_status),
+    ("quality", "کیفیت اندازه‌گیری‌شده‌ی پول", cmd_quality),
     ("health", "سلامت منابع", cmd_health),
     ("pause", "مکث انتشار خودکار", cmd_pause),
     ("resume", "ادامه‌ی انتشار خودکار", cmd_resume),
@@ -1710,6 +1938,8 @@ ADMIN_ROUTES.update({
     BTN_A_STATUS: cmd_status,
     BTN_A_DONATIONS: cmd_donations,
     BTN_A_TOGGLE: cmd_toggle_publish,
+    BTN_A_QUALITY: cmd_quality,
+    BTN_A_HEALTH: cmd_health,
 })
 
 

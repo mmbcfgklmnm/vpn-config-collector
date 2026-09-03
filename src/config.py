@@ -59,6 +59,28 @@ ALLOWED_SECURITY = ["reality", "tls", "xtls"]
 ALLOW_CDN_PLAIN     = _bool_env("ALLOW_CDN_PLAIN", True)
 CDN_PLAIN_NETWORKS  = ("ws", "httpupgrade", "xhttp", "grpc")
 
+# ─── احیای کانفیگ CDN با IP تمیز کلودفلر ────────────────────
+# مسئله: در کانفیگ «VLESS over WS از طریق کلودفلر»، آدرسِ ورودی فقط یک نقطه‌ی
+# ورود به شبکه‌ی CF است؛ مسیریابی واقعی با هدر Host و SNI انجام می‌شود. پس
+# وقتی آن IP از ایران فیلتر می‌شود، سرور *سالم* است و فقط درِ ورودی بسته شده.
+# با عوض کردن آدرس به یک IP تمیز CF (و دست نزدن به Host/SNI) همان کانفیگ
+# دوباره کار می‌کند. این کار *فقط* روی endpoint هایی انجام می‌شود که لایه ۴
+# حکم «از ایران بسته است» داده باشد — نه روی کانفیگ سالم.
+CF_CLEAN_IP_ENABLED = _bool_env("CF_CLEAN_IP_ENABLED", True)
+# فهرست محلی IP های تمیز (یکی در هر خط، # برای توضیح). اگر نبود یا کهنه بود،
+# اسکنر خودش از محدوده‌های CF نمونه می‌گیرد.
+CF_CLEAN_IP_FILE    = os.getenv("CF_CLEAN_IP_FILE", "configs/clean_ips.txt")
+# چند IP تمیز لازم داریم. هر کانفیگِ احیاشده یکی از این‌ها را می‌گیرد
+# (round-robin) تا همه‌ی بار روی یک IP نیفتد.
+CF_CLEAN_IP_WANT    = _int_env("CF_CLEAN_IP_WANT", 6)
+# چند IP نامزد اسکن شود تا CF_CLEAN_IP_WANT تای زنده پیدا شود.
+CF_SCAN_CANDIDATES  = _int_env("CF_SCAN_CANDIDATES", 120)
+CF_SCAN_CONCURRENCY = _int_env("CF_SCAN_CONCURRENCY", 40)
+CF_SCAN_TIMEOUT_SEC = _float_env("CF_SCAN_TIMEOUT_SEC", 2.5)
+# سقف کانفیگ‌های احیاشده در هر اجرا — هر کدام یک endpoint تازه است و
+# سهمیه‌ی check-host را مصرف می‌کند.
+CF_REVIVE_MAX       = _int_env("CF_REVIVE_MAX", 120)
+
 # ─── تست ──────────────────────────────────────────────────
 TCP_TIMEOUT_SEC     = _int_env("TCP_TIMEOUT_SEC", 4)
 XRAY_TIMEOUT_SEC    = _int_env("XRAY_TIMEOUT_SEC", 12)
@@ -127,6 +149,38 @@ MAX_HTTP_TEST       = _int_env("MAX_HTTP_TEST", 1500)
 HTTP_TEST_ROUNDS    = _int_env("HTTP_TEST_ROUNDS", 3)
 # فاصله‌ی بین دورها؛ بدون فاصله هر سه دور یک لحظه‌ی شبکه را می‌سنجند.
 HTTP_ROUND_GAP_SEC  = _int_env("HTTP_ROUND_GAP_SEC", 3)
+
+# ─── تأخیر واقعی، پایداری و سرعت (داخل تونل) ────────────────
+# «تأخیر واقعی» = زمان رفت‌وبرگشت یک درخواست 204 که *از داخل تونل* رد شده.
+# با پینگ TCP فرق دارد: پینگ TCP فقط می‌گوید چیزی روی آن پورت جواب می‌دهد،
+# این می‌گوید تونل VLESS واقعاً داده جابه‌جا می‌کند و چقدر طول می‌کشد.
+REAL_DELAY_MAX_MS   = _int_env("REAL_DELAY_MAX_MS", 3000)
+# چند probe پشت سر هم با این فاصله. یک probe نه jitter می‌دهد نه packet loss؛
+# با ۴ تا هر دو قابل محاسبه‌اند و هزینه‌اش ۳ ثانیه بیشتر روی همان پروسه‌ی xray
+# است (پروسه یک بار بالا می‌آید و همه‌ی probe ها از آن رد می‌شوند).
+PROBE_COUNT         = _int_env("PROBE_COUNT", 4)
+PROBE_GAP_SEC       = _float_env("PROBE_GAP_SEC", 1.0)
+# سقف افت بسته. ۲۵٪ یعنی از ۴ probe یکی می‌تواند بیفتد. خواسته‌ی صریح کاربر:
+# «نودی با پینگ ۱۰۰ و ۰٪ افت از نودی با پینگ ۵۰ و ۲۰٪ افت ارزشمندتر است».
+MAX_PACKET_LOSS_PCT = _int_env("MAX_PACKET_LOSS_PCT", 25)
+# سقف لرزش (ms). ۰ = بی‌اهمیت. تونل با jitter بالا برای تماس صوتی/تصویری
+# بی‌فایده است حتی اگر میانه‌ی تأخیرش خوب باشد.
+MAX_JITTER_MS       = _int_env("MAX_JITTER_MS", 0)
+
+# بنچمارک سرعت دانلود — یک فایل کوچک از داخل همان تونل.
+SPEED_TEST_ENABLED  = _bool_env("SPEED_TEST_ENABLED", True)
+SPEED_TEST_BYTES    = _int_env("SPEED_TEST_BYTES", 512 * 1024)
+# __down endpoint کلودفلر دقیقاً برای همین کار است و هرجا CDN دارد نزدیک است.
+SPEED_TEST_URL      = os.getenv(
+    "SPEED_TEST_URL", "https://speed.cloudflare.com/__down?bytes="
+)
+SPEED_TEST_TIMEOUT_SEC = _float_env("SPEED_TEST_TIMEOUT_SEC", 15.0)
+# کمتر از این، کانفیگ حذف می‌شود (KB/s). ۵۰ KB/s کف «قابل استفاده» است.
+SPEED_MIN_KBPS      = _float_env("SPEED_MIN_KBPS", 50.0)
+# اگر بنچمارک سرعت *همه* را رد کرد، تقصیر کانفیگ‌ها نیست (URL بسته، رانر
+# محدود). بالای این تعداد ردشدنِ فقط-سرعتی و صفر قبولی، گیت سرعت کنار
+# گذاشته می‌شود — همان قاعده‌ی «تست نشد ≠ رد شد».
+SPEED_RESCUE_MIN    = _int_env("SPEED_RESCUE_MIN", 3)
 
 # سرور نباید در این کشورها باشه. RU و CN از پیش‌فرض حذف شدن چون
 # سرورهای سالم زیادی اونجا هست و over-filter می‌کرد.

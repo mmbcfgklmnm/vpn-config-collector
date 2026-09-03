@@ -1,0 +1,1 @@
+vless://1e78f247-1e3e-400e-bf1f-bb0c908b9a60@mci.v2plus.ovh:80?encryption=none&security=none&sni=worker3.laton16859.workers.dev&type=ws&host=worker3.laton16859.workers.dev&path=/GXXYmLBSqSttMjgI#IR|BZ|121ms

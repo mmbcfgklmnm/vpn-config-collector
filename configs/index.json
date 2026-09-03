@@ -1,15 +1,15 @@
 {
   "schema": 2,
-  "updated_at": "2026-09-03T16:42:42+00:00",
+  "updated_at": "2026-09-03T17:46:41+00:00",
   "counts": {
-    "valid": 635,
-    "iran_verified": 11,
-    "international": 624,
+    "valid": 723,
+    "iran_verified": 16,
+    "international": 707,
     "pool": 500,
     "top": 10,
     "countries": {
-      "US": 52,
-      "XX": 583
+      "US": 36,
+      "XX": 687
     }
   },
   "publish": {
@@ -42,48 +42,48 @@
   },
   "pipeline": {
     "layer1_format": {
-      "total": 19958,
-      "valid": 16748,
-      "invalid": 3210,
-      "cdn_plain": 3174,
+      "total": 19975,
+      "valid": 16794,
+      "invalid": 3181,
+      "cdn_plain": 3156,
       "top_reasons": {
-        "security نامعتبر: none": 2353,
-        "security نامعتبر: ": 394,
-        "reality بدون pbk": 256,
+        "security نامعتبر: none": 2334,
+        "security نامعتبر: ": 391,
+        "reality بدون pbk": 246,
         "طول نامعتبر": 43,
         "UUID نامعتبر: telegram-id-ArV2ray": 25
       }
     },
     "layer2_dedup": {
-      "total": 16748,
-      "unique": 10840,
+      "total": 16794,
+      "unique": 10848,
       "exact_dups": 0,
-      "norm_dups": 4826,
-      "fp_dups": 1082
+      "norm_dups": 4819,
+      "fp_dups": 1127
     },
     "layer3_tcp": {
-      "total": 10840,
-      "connected": 8639,
-      "failed": 2201,
+      "total": 10848,
+      "connected": 8611,
+      "failed": 2237,
       "unparsable": 0,
-      "endpoints_total": 8210,
-      "endpoints_alive": 6354,
+      "endpoints_total": 8233,
+      "endpoints_alive": 6356,
       "attempts_required": 2,
-      "avg_latency_ms": 53.9,
-      "duration_seconds": 89.8
+      "avg_latency_ms": 48.7,
+      "duration_seconds": 90.0
     },
     "layer4_iran": {
-      "total": 8639,
-      "passed": 8637,
-      "failed": 2,
+      "total": 8611,
+      "passed": 8585,
+      "failed": 26,
       "skipped": false,
-      "endpoints_total": 6351,
-      "endpoints_checked": 118,
-      "endpoints_alive": 87,
-      "endpoints_blocked": 1,
-      "endpoints_unknown": 6263,
-      "verified": 109,
-      "unverified": 8528,
+      "endpoints_total": 6353,
+      "endpoints_checked": 158,
+      "endpoints_alive": 153,
+      "endpoints_blocked": 5,
+      "endpoints_unknown": 6195,
+      "verified": 269,
+      "unverified": 8316,
       "nodes": [
         "ir1.node.check-host.net",
         "ir2.node.check-host.net",
@@ -94,88 +94,93 @@
         "ir8.node.check-host.net"
       ],
       "top_reasons": {
-        "api: HTTP 429": 30,
-        "از ایران بسته است": 1
+        "از ایران بسته است": 5
       },
-      "api_errors": 30,
-      "rate_limited": 30,
-      "stopped_rate_limited": true
+      "api_errors": 0,
+      "rate_limited": 0
     },
     "layer5_tls": {
-      "total": 8637,
-      "passed": 6658,
-      "failed": 1979,
-      "avg_tls_ms": 426.1
+      "total": 8585,
+      "passed": 6617,
+      "failed": 1968,
+      "avg_tls_ms": 430.5
     },
     "layer6_geo": {
-      "total": 6658,
-      "passed": 6645,
-      "failed": 13,
-      "unknown_country": 4970,
+      "total": 6617,
+      "passed": 6603,
+      "failed": 14,
+      "unknown_country": 4754,
       "countries": {
-        "US": 1654,
-        "CR": 6,
-        "LU": 1,
-        "NL": 5,
-        "RS": 2,
-        "BZ": 2,
-        "HK": 2,
+        "US": 1802,
+        "CR": 11,
+        "LT": 3,
+        "EE": 1,
+        "CA": 2,
+        "KZ": 3,
+        "NL": 4,
+        "BZ": 4,
+        "GB": 3,
+        "RS": 1,
+        "HK": 3,
+        "SE": 6,
+        "CW": 1,
+        "NZ": 2,
+        "RU": 1,
         "CY": 1,
-        "KZ": 1,
-        "PL": 1,
-        "??": 4970
+        "DE": 1,
+        "??": 4754
       }
     },
     "layer7_http": {
       "total": 1500,
-      "passed": 635,
-      "failed": 865,
+      "passed": 723,
+      "failed": 777,
       "rounds": 3,
       "round_stats": [
         {
           "round": 1,
           "input": 1500,
-          "passed": 648,
-          "failed": 852,
-          "duration_seconds": 1085.1
+          "passed": 735,
+          "failed": 765,
+          "duration_seconds": 995.7
         },
         {
           "round": 2,
-          "input": 648,
-          "passed": 640,
-          "failed": 8,
+          "input": 735,
+          "passed": 732,
+          "failed": 3,
           "duration_seconds": 149.0
         },
         {
           "round": 3,
-          "input": 640,
-          "passed": 635,
-          "failed": 5,
-          "duration_seconds": 151.3
+          "input": 732,
+          "passed": 723,
+          "failed": 9,
+          "duration_seconds": 119.9
         }
       ],
-      "avg_ms": 857.4,
-      "best_ms": 21.8,
+      "avg_ms": 769.5,
+      "best_ms": 30.9,
       "top_reasons": {
-        "همه URL ها fail شدن": 858,
-        "xray بالا نیامد: a256\". Please update your config(s) according to release note and documentation.": 2,
-        "xray بالا نیامد: detour > infra/conf: Config: unknown transport protocol: tcp#👝98@oneclickvpnkeys": 1
+        "همه URL ها fail شدن": 768,
+        "xray بالا نیامد: a256\". Please update your config(s) according to release note and documentation.": 4,
+        "xray بالا نیامد:  detour > infra/conf: Config: unknown transport protocol: tcp#4👝@oneclickvpnkeys": 1
       },
-      "not_tested": 5145
+      "not_tested": 5103
     },
     "summary": {
       "funnel": [
-        19958,
-        16748,
-        10840,
-        8639,
-        8637,
-        6658,
-        6645,
-        635
+        19975,
+        16794,
+        10848,
+        8611,
+        8585,
+        6617,
+        6603,
+        723
       ],
-      "final": 635,
-      "iran_verified": 11,
+      "final": 723,
+      "iran_verified": 16,
       "reserve": 500
     }
   }

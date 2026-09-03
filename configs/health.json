@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-03T00:36:39+00:00",
+  "updated_at": "2026-09-03T01:08:47+00:00",
   "by_kind": {
     "web": {
       "sources": 11,
@@ -17,17 +17,12 @@
   "dead_sources": [
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
       "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
       "error": "HTTP 404"
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
       "error": "HTTP 404"
     },
     {
@@ -42,12 +37,17 @@
     },
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
       "error": "صفر کانفیگ"
     },
     {
       "kind": "github",
-      "name": "hossein-mohseni/v2ray",
+      "name": "barry-far/V2ray-Configs",
       "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
@@ -62,7 +62,7 @@
     },
     {
       "kind": "github",
-      "name": "barry-far/V2ray-Configs",
+      "name": "hossein-mohseni/v2ray",
       "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
@@ -133,13 +133,6 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-      "count": 0,
-      "ok": false,
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
       "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
       "count": 0,
       "ok": false,
@@ -147,14 +140,7 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-      "count": 1,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
       "count": 0,
       "ok": false,
       "error": "HTTP 404"
@@ -175,10 +161,17 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
+      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+      "count": 1,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
       "count": 0,
       "ok": false,
-      "error": ""
+      "error": "HTTP 404"
     },
     {
       "kind": "web",
@@ -188,8 +181,15 @@
       "error": ""
     },
     {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
+      "count": 0,
+      "ok": false,
+      "error": ""
+    },
+    {
       "kind": "github",
-      "name": "hossein-mohseni/v2ray",
+      "name": "barry-far/V2ray-Configs",
       "count": 0,
       "ok": false,
       "error": "هیچ فایل کاندیدی پیدا نشد"
@@ -210,22 +210,22 @@
     },
     {
       "kind": "github",
-      "name": "barry-far/V2ray-Configs",
+      "name": "hossein-mohseni/v2ray",
       "count": 0,
       "ok": false,
       "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
       "kind": "github",
-      "name": "0xRadikal/Free-v2ray-Configs",
-      "count": 2000,
+      "name": "roosterkid/openproxylist",
+      "count": 360,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
-      "name": "Pawdroid/Free-servers",
-      "count": 305,
+      "name": "0xRadikal/Free-v2ray-Configs",
+      "count": 2000,
       "ok": true,
       "error": ""
     },
@@ -245,8 +245,8 @@
     },
     {
       "kind": "github",
-      "name": "roosterkid/openproxylist",
-      "count": 360,
+      "name": "Pawdroid/Free-servers",
+      "count": 305,
       "ok": true,
       "error": ""
     },

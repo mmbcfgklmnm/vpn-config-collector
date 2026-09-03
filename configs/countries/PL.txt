@@ -1,1 +1,1 @@
-vless://1d16c6e0-1bbe-435b-b661-90043fee999c@185.193.28.123:443?encryption=none&security=tls&sni=notls.lukongtou.eu.org&type=ws&host=notls.lukongtou.eu.org&path=telegram-wangcai2%F0%9F%87%A8%F0%9F%87%B3#FR|PL|64ms
+vless://1d16c6e0-1bbe-435b-b661-90043fee999c@185.193.28.123:443?encryption=none&security=tls&sni=notls.lukongtou.eu.org&type=ws&host=notls.lukongtou.eu.org&path=telegram-wangcai2%F0%9F%87%A8%F0%9F%87%B3#FR|PL|50ms

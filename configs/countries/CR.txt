@@ -1,1 +1,0 @@
-vless://3bb6fd82-3a15-eaea-6168-4dac2b70079e@190.93.245.255:443?path=%2Fsync&security=tls&encryption=none&insecure=0&host=nahan-fog-af01.dfghttr2012.workers.dev&fp=chrome&type=ws&allowInsecure=0&sni=nahan-fog-af01.dfghttr2012.workers.dev#CR|CR|400ms

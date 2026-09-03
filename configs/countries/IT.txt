@@ -1,3 +1,0 @@
-vless://9bbd487f-8f84-4ad7-b897-681c3f7d95dc@150.241.73.194:443?security=reality&encryption=none&pbk=9hU6AMKLyYk7iFeX-JF_6bd5ek-0CdHmk7t38raL9T4&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=logomarket.mervi.icu&sid=2e11269895800a3c#IT|IT|287ms
-vless://167ed405-7de9-4bff-b1ea-6e3d49c76b0b@172.238.232.239:32833?security=reality&encryption=none&pbk=PaTDdYBrlh1xBixdI0igvRRkf0vnUwMRzi-4oDyfS20&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=www.intel.com&sid=a0a305ccc8e94aa8#🇮🇹[openproxylist.com]|IT|302ms
-vless://167ed405-7de9-4bff-b1ea-6e3d49c76b0b@172.238.232.239:32833?security=reality&type=tcp&allowInsecure=1&sni=www.intel.com&fp=chrome&flow=xtls-rprx-vision&sid=a0a305ccc8e94aa8&pbk=PaTDdYBrlh1xBixdI0igvRRkf0vnUwMRzi-4oDyfS20#IT|IT|302ms

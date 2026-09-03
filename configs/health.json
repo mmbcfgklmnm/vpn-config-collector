@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-03T09:35:16+00:00",
+  "updated_at": "2026-09-03T10:07:25+00:00",
   "by_kind": {
     "web": {
       "sources": 11,
@@ -17,8 +17,13 @@
   "dead_sources": [
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
-      "error": "صفر کانفیگ"
+      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
+      "error": "HTTP 404"
     },
     {
       "kind": "web",
@@ -27,13 +32,13 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-      "error": "HTTP 404"
+      "name": "https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt",
+      "error": "صفر کانفیگ"
     },
     {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
-      "error": "HTTP 404"
+      "kind": "github",
+      "name": "4n0nymou3/V2Ray-Configs-Premium",
+      "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
       "kind": "web",
@@ -47,17 +52,12 @@
     },
     {
       "kind": "github",
-      "name": "yebekhe/V2Hub",
-      "error": "هیچ فایل کاندیدی پیدا نشد"
-    },
-    {
-      "kind": "github",
-      "name": "4n0nymou3/V2Ray-Configs-Premium",
-      "error": "هیچ فایل کاندیدی پیدا نشد"
-    },
-    {
-      "kind": "github",
       "name": "hossein-mohseni/v2ray",
+      "error": "هیچ فایل کاندیدی پیدا نشد"
+    },
+    {
+      "kind": "github",
+      "name": "yebekhe/V2Hub",
       "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
@@ -126,8 +126,43 @@
   "sources": [
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+      "count": 7,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+      "count": 0,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
       "count": 125,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
+      "count": 0,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "count": 0,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+      "count": 8,
       "ok": true,
       "error": ""
     },
@@ -139,39 +174,11 @@
       "error": ""
     },
     {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-      "count": 7,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
-      "count": 8,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "kind": "github",
+      "name": "4n0nymou3/V2Ray-Configs-Premium",
       "count": 0,
       "ok": false,
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-      "count": 0,
-      "ok": false,
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/4n0nymou3/V2Ray-Configs-Premium/main/configs.txt",
-      "count": 0,
-      "ok": false,
-      "error": "HTTP 404"
+      "error": "هیچ فایل کاندیدی پیدا نشد"
     },
     {
       "kind": "web",
@@ -189,21 +196,14 @@
     },
     {
       "kind": "github",
-      "name": "yebekhe/V2Hub",
-      "count": 0,
-      "ok": false,
-      "error": "هیچ فایل کاندیدی پیدا نشد"
-    },
-    {
-      "kind": "github",
-      "name": "4n0nymou3/V2Ray-Configs-Premium",
-      "count": 0,
-      "ok": false,
-      "error": "هیچ فایل کاندیدی پیدا نشد"
-    },
-    {
-      "kind": "github",
       "name": "hossein-mohseni/v2ray",
+      "count": 0,
+      "ok": false,
+      "error": "هیچ فایل کاندیدی پیدا نشد"
+    },
+    {
+      "kind": "github",
+      "name": "yebekhe/V2Hub",
       "count": 0,
       "ok": false,
       "error": "هیچ فایل کاندیدی پیدا نشد"
@@ -214,13 +214,6 @@
       "count": 0,
       "ok": false,
       "error": "هیچ فایل کاندیدی پیدا نشد"
-    },
-    {
-      "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
-      "count": 1130,
-      "ok": true,
-      "error": ""
     },
     {
       "kind": "web",
@@ -237,9 +230,9 @@
       "error": ""
     },
     {
-      "kind": "github",
-      "name": "0xRadikal/Free-v2ray-Configs",
-      "count": 2000,
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
+      "count": 1130,
       "ok": true,
       "error": ""
     },
@@ -248,6 +241,20 @@
       "name": "Pawdroid/Free-servers",
       "count": 273,
       "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "github",
+      "name": "0xRadikal/Free-v2ray-Configs",
+      "count": 2000,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "github",
+      "name": "mfuu/v2ray",
+      "count": 0,
+      "ok": false,
       "error": ""
     },
     {
@@ -262,13 +269,6 @@
       "name": "aiboboxx/v2rayfree",
       "count": 551,
       "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "github",
-      "name": "mfuu/v2ray",
-      "count": 0,
-      "ok": false,
       "error": ""
     }
   ]

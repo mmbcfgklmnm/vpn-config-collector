@@ -1,66 +1,66 @@
 {
-  "timestamp": "2026-09-04T02:19:01+00:00",
-  "duration_seconds": 3005.0,
-  "raw_collected": 20219,
-  "valid_configs": 721,
-  "iran_verified": 11,
+  "timestamp": "2026-09-04T04:04:01+00:00",
+  "duration_seconds": 3153.6,
+  "raw_collected": 20286,
+  "valid_configs": 672,
+  "iran_verified": 3,
   "reserve_pool": 500,
   "skip_xray": false,
   "written": {
     "pool": 500,
-    "valid": 721,
-    "iran": 11,
-    "international": 710,
+    "valid": 672,
+    "iran": 3,
+    "international": 669,
     "top": 10,
     "countries": {
-      "US": 41,
-      "XX": 680
+      "US": 40,
+      "XX": 632
     }
   },
   "pipeline": {
     "layer1_format": {
-      "total": 20219,
-      "valid": 17052,
-      "invalid": 3167,
-      "cdn_plain": 3241,
+      "total": 20286,
+      "valid": 17160,
+      "invalid": 3126,
+      "cdn_plain": 3332,
       "top_reasons": {
-        "security نامعتبر: none": 2315,
-        "security نامعتبر: ": 402,
-        "reality بدون pbk": 236,
-        "طول نامعتبر": 42,
+        "security نامعتبر: none": 2298,
+        "security نامعتبر: ": 391,
+        "reality بدون pbk": 227,
+        "طول نامعتبر": 41,
         "UUID نامعتبر: telegram-id-ArV2ray": 25
       }
     },
     "layer2_dedup": {
-      "total": 17052,
-      "unique": 10956,
+      "total": 17160,
+      "unique": 11063,
       "exact_dups": 0,
-      "norm_dups": 4902,
-      "fp_dups": 1194
+      "norm_dups": 4898,
+      "fp_dups": 1199
     },
     "layer3_tcp": {
-      "total": 10956,
-      "connected": 8821,
-      "failed": 2135,
+      "total": 11063,
+      "connected": 8919,
+      "failed": 2144,
       "unparsable": 0,
-      "endpoints_total": 8145,
-      "endpoints_alive": 6333,
+      "endpoints_total": 8206,
+      "endpoints_alive": 6388,
       "attempts_required": 2,
-      "avg_latency_ms": 32.1,
-      "duration_seconds": 85.0
+      "avg_latency_ms": 35.0,
+      "duration_seconds": 85.9
     },
     "layer4_iran": {
-      "total": 8821,
-      "passed": 8816,
-      "failed": 5,
+      "total": 8919,
+      "passed": 8913,
+      "failed": 6,
       "skipped": false,
-      "endpoints_total": 6330,
-      "endpoints_checked": 118,
-      "endpoints_alive": 85,
-      "endpoints_blocked": 3,
-      "endpoints_unknown": 6242,
-      "verified": 114,
-      "unverified": 8702,
+      "endpoints_total": 6385,
+      "endpoints_checked": 130,
+      "endpoints_alive": 84,
+      "endpoints_blocked": 1,
+      "endpoints_unknown": 6300,
+      "verified": 175,
+      "unverified": 8738,
       "nodes": [
         "ir1.node.check-host.net",
         "ir2.node.check-host.net",
@@ -72,31 +72,32 @@
       ],
       "top_reasons": {
         "api: HTTP 429": 30,
-        "از ایران بسته است": 3
+        "api: submit HTTP 503": 7,
+        "api: submit HTTP 522": 5
       },
-      "api_errors": 30,
+      "api_errors": 45,
       "rate_limited": 30,
       "stopped_rate_limited": true
     },
     "layer4b_revive": {
       "enabled": true,
-      "blocked": 5,
-      "candidates": 5,
+      "blocked": 6,
+      "candidates": 6,
       "clean_ips": 6,
-      "revived": 5,
+      "revived": 6,
       "passed": 4,
       "recheck": {
-        "total": 5,
-        "passed": 5,
+        "total": 6,
+        "passed": 6,
         "failed": 0,
         "skipped": false,
-        "endpoints_total": 5,
-        "endpoints_checked": 5,
+        "endpoints_total": 6,
+        "endpoints_checked": 6,
         "endpoints_alive": 4,
         "endpoints_blocked": 0,
-        "endpoints_unknown": 1,
+        "endpoints_unknown": 2,
         "verified": 4,
-        "unverified": 1,
+        "unverified": 2,
         "nodes": [
           "ir1.node.check-host.net",
           "ir2.node.check-host.net",
@@ -107,101 +108,97 @@
           "ir8.node.check-host.net"
         ],
         "top_reasons": {
-          "api: HTTP 429": 1
+          "api: HTTP 429": 2
         },
-        "api_errors": 1,
-        "rate_limited": 1
+        "api_errors": 2,
+        "rate_limited": 2
       }
     },
     "layer5_tls": {
-      "total": 8820,
-      "passed": 6924,
-      "failed": 1896,
-      "avg_tls_ms": 406.1
+      "total": 8917,
+      "passed": 6999,
+      "failed": 1918,
+      "avg_tls_ms": 389.2
     },
     "layer6_geo": {
-      "total": 6924,
-      "passed": 6913,
-      "failed": 11,
-      "unknown_country": 5030,
+      "total": 6999,
+      "passed": 6985,
+      "failed": 14,
+      "unknown_country": 5041,
       "countries": {
-        "US": 1862,
+        "US": 1925,
         "RU": 1,
-        "EE": 1,
-        "GB": 4,
-        "CA": 2,
         "BZ": 2,
-        "CR": 3,
-        "NL": 1,
-        "LU": 1,
-        "SG": 1,
-        "DE": 1,
-        "RS": 1,
-        "PL": 1,
-        "CY": 1,
+        "NL": 4,
+        "CR": 2,
+        "GB": 4,
+        "PL": 2,
         "SE": 1,
-        "??": 5030
+        "CY": 1,
+        "CA": 1,
+        "KZ": 1,
+        "??": 5041
       }
     },
     "layer7_http": {
       "total": 1500,
-      "passed": 721,
-      "failed": 779,
+      "passed": 672,
+      "failed": 828,
       "rounds": 3,
       "round_stats": [
         {
           "round": 1,
           "input": 1500,
-          "passed": 735,
-          "failed": 765,
-          "duration_seconds": 1225.6
+          "passed": 684,
+          "failed": 816,
+          "duration_seconds": 1323.6
         },
         {
           "round": 2,
-          "input": 735,
-          "passed": 724,
-          "failed": 11,
-          "duration_seconds": 491.5
+          "input": 684,
+          "passed": 678,
+          "failed": 6,
+          "duration_seconds": 472.6
         },
         {
           "round": 3,
-          "input": 724,
-          "passed": 721,
-          "failed": 3,
-          "duration_seconds": 465.9
+          "input": 678,
+          "passed": 672,
+          "failed": 6,
+          "duration_seconds": 477.1
         }
       ],
-      "avg_ms": 99.4,
-      "best_ms": 6.4,
-      "avg_speed_kbps": 1194.2,
-      "speed_measured": 721,
+      "avg_ms": 101.9,
+      "best_ms": 4.5,
+      "avg_speed_kbps": 1145.4,
+      "speed_measured": 672,
       "avg_loss_pct": 0.0,
-      "zero_loss": 721,
+      "zero_loss": 672,
       "top_reasons": {
-        "همه URL ها fail شدن": 539,
-        "سرعت: timeout": 117,
-        "سرعت: ConnectionResetError": 108
+        "همه URL ها fail شدن": 543,
+        "سرعت: timeout": 148,
+        "سرعت: ConnectionResetError": 127
       },
-      "not_tested": 5413
+      "not_tested": 5485
     },
     "summary": {
       "funnel": [
-        20219,
-        17052,
-        10956,
-        8821,
-        8820,
-        6924,
-        6913,
-        721
+        20286,
+        17160,
+        11063,
+        8919,
+        8917,
+        6999,
+        6985,
+        672
       ],
-      "final": 721,
-      "iran_verified": 11,
+      "final": 672,
+      "iran_verified": 3,
       "reserve": 500,
       "revived": 4,
-      "stable": 721,
-      "speed_measured": 721,
-      "avg_speed_kbps": 1194.2
+      "stable": 672,
+      "speed_measured": 672,
+      "avg_speed_kbps": 1145.4
     }
   }
 }

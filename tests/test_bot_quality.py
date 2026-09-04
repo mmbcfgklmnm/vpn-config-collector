@@ -117,6 +117,18 @@ def test_a_fully_untested_pool_claims_no_stability_at_all():
     assert "بدون سنجه‌ی پایداری: 2" in report
 
 
+def test_an_unmeasured_loss_is_not_printed_as_zero_out_of_nothing():
+    """«بدون افت بسته: 0/—» خوانده می‌شود «هیچ‌کدام سالم نیستند» — دروغ است.
+
+    این تنها خطِ گزارش بود که قاعده‌ی «نامعلوم ≠ صفر» را نداشت، و همان چیزی
+    است که دکمه را «خراب» نشان می‌داد: عددِ صفر جای «اندازه‌گیری نشد».
+    """
+    report = "\n".join(bot._quality_report([named("a"), named("b")]))
+    assert "افت بسته: اندازه‌گیری نشد" in report
+    assert "0/—" not in report
+    assert "بدون افت بسته: 0" not in report
+
+
 def test_revived_and_iran_verified_configs_are_counted():
     revived = vless.add_tag(clean_ip.revive(CDN, "172.67.1.2"), 90.0, "DE", 210.0)
     report = "\n".join(bot._quality_report([revived, named("plain")]))
@@ -131,6 +143,85 @@ def test_the_best_latency_is_shown_next_to_the_average():
     ]))
     assert "میانگین 200.0ms" in report
     assert "بهترین 100ms" in report
+
+
+# ─── چرا سنجه‌ای نیست ─────────────────────────────────────
+# شکایت کاربر: «دکمه‌ی کیفیت پول اگر کار نکند بی‌فایده است.» گزارش خراب نبود؛
+# داده‌ی واقعی سنجه نداشت و ادمین از سه خطِ «اندازه‌گیری نشد» نمی‌فهمید کدام
+# است. هر تست این بخش یک دلیلِ ممکن را به یک جمله‌ی صریح گره می‌زند.
+
+LAYER7_OK = {"total": 100, "passed": 80}
+MEASURED_SUMMARY = {"funnel": [10, 8], "speed_measured": 8}
+
+
+def gap(configs, stats) -> str:
+    return "\n".join(bot._quality_gap(configs, stats))
+
+
+def test_a_measured_pool_needs_no_explanation():
+    assert bot._quality_gap([named("a", loss_pct=0.0)], {}) == []
+
+
+def test_an_empty_pool_needs_no_explanation():
+    """پول خالی دلیل خودش را دارد؛ دو توضیح پشت هم گیج‌کننده است."""
+    assert bot._quality_gap([], {"skip_xray": True}) == []
+
+
+def test_skip_xray_is_named_as_the_reason():
+    text = gap([named("a")], {"skip_xray": True, "pipeline": {
+        "layer7_http": {"skipped": True}, "summary": MEASURED_SUMMARY,
+    }})
+    assert "SKIP_XRAY" in text and "/run" in text
+
+
+def test_a_pipeline_that_never_reached_layer_7_is_named():
+    text = gap([named("a")], {"pipeline": {"layer3_tcp": {"passed": 0}}})
+    assert "به لایه ۷ نرسید" in text
+    assert "/health" in text
+
+
+def test_output_older_than_the_measurement_is_named():
+    """حالتِ واقعیِ امروز: خروجی از اجرایی است که آن لایه را نداشت.
+
+    نشانه‌اش کلیدِ speed_measured در summary است — فقط نسخه‌ی سنجه‌دار
+    می‌نویسدش، پس نبودنش تاریخِ فایل را لو می‌دهد بی آنکه به git نگاه کنیم.
+    """
+    text = gap([named("a")], {"pipeline": {
+        "layer7_http": LAYER7_OK,
+        "summary": {"funnel": [10, 8], "final": 8},
+    }})
+    assert "قبل از* اضافه شدن اندازه‌گیری" in text
+    assert "/run" in text
+
+
+def test_a_layer_7_that_passed_nothing_is_named():
+    text = gap([named("a")], {"pipeline": {
+        "layer7_http": {"total": 40, "passed": 0},
+        "summary": MEASURED_SUMMARY,
+    }})
+    assert "هیچ کانفیگی را تأیید نکرد" in text
+    assert "40" in text
+
+
+def test_a_mismatch_between_the_files_and_the_stats_is_named():
+    """لایه ۷ تأیید کرده و نسخه هم سنجه‌دار است، ولی برچسبی نیست."""
+    text = gap([named("a")], {"pipeline": {
+        "layer7_http": LAYER7_OK, "summary": MEASURED_SUMMARY,
+    }})
+    assert "از یک اجرا نیستند" in text
+
+
+def test_the_diagnosis_dates_the_data_it_read():
+    """ادمین باید بداند گزارش از کدام اجراست، وگرنه دنبال باگِ امروز می‌گردد."""
+    text = gap([named("a")], {
+        "timestamp": "2026-09-03T17:46:41+00:00",
+        "pipeline": {"layer7_http": LAYER7_OK, "summary": MEASURED_SUMMARY},
+    })
+    assert "2026-09-03 17:46" in text
+
+
+def test_a_stats_file_without_a_pipeline_key_still_gets_a_reason():
+    assert "به لایه ۷ نرسید" in gap([named("a")], {"pipeline": None})
 
 
 # ─── دستور ────────────────────────────────────────────────
@@ -171,6 +262,66 @@ def test_quality_survives_a_stats_file_without_a_pipeline_key(monkeypatch):
     run(bot.cmd_quality(update, FakeContext()))
     assert "پول خالی است" in update.sent
     assert "آخرین اجرای pipeline" not in update.sent
+
+
+def test_quality_shows_how_many_configs_were_tried_for_the_first_time(monkeypatch):
+    """پاسخ به «ربات دیگر دنبال کانفیگ نیست»: عددِ چرخشِ نوبتِ لایه ۷."""
+    monkeypatch.setattr(bot, "load_stats", lambda: {"pipeline": {"summary": {
+        "funnel": [248, 240, 88, 44, 40, 40, 12, 10],
+        "fresh_tested": 37, "new_passed": 4,
+    }}})
+    update = FakeUpdate(uid=ADMIN)
+    run(bot.cmd_quality(update, FakeContext()))
+    assert "اولین‌بار از تونل آزموده شد: 37" in update.sent
+    assert "تازه تأیید شد: 4" in update.sent
+
+
+def test_a_run_without_rotation_numbers_claims_none(monkeypatch):
+    """اجرای SKIP_XRAY یا خروجیِ نسخه‌ی قبل کلید ندارد؛ «۰ تازه» ادعای دروغ است."""
+    monkeypatch.setattr(bot, "load_stats", lambda: {"pipeline": {"summary": {
+        "funnel": [10, 8], "stable": 8,
+    }}})
+    update = FakeUpdate(uid=ADMIN)
+    run(bot.cmd_quality(update, FakeContext()))
+    assert "آخرین اجرای pipeline" in update.sent
+    assert "اولین‌بار از تونل" not in update.sent
+
+
+def test_quality_tells_the_admin_why_the_metrics_are_missing(monkeypatch):
+    """پایانِ شکایت «دکمه کار نمی‌کند»: پاسخ باید علت را هم داشته باشد.
+
+    داده‌ی این تست شکلِ همان چیزی است که امروز در configs/ هست — ۷۲۳ کانفیگ
+    تأییدشده که هیچ‌کدام برچسب سنجه ندارند چون فایل‌ها از اجرایی مانده‌اند که
+    آن اندازه‌گیری را نداشت.
+    """
+    monkeypatch.setattr(bot, "load_configs", lambda: [named("a"), named("b")])
+    monkeypatch.setattr(bot, "load_stats", lambda: {
+        "timestamp": "2026-09-03T17:46:41+00:00",
+        "pipeline": {
+            "layer7_http": {"total": 1500, "passed": 723},
+            "summary": {"funnel": [19975, 723], "final": 723},
+        },
+    })
+    update = FakeUpdate(uid=ADMIN)
+    run(bot.cmd_quality(update, FakeContext()))
+    assert "چرا سنجه‌ای نیست" in update.sent
+    assert "قبل از* اضافه شدن اندازه‌گیری" in update.sent
+    assert "2026-09-03 17:46" in update.sent
+
+
+def test_a_healthy_pool_gets_no_why_section(monkeypatch):
+    """توضیحِ بی‌جا هم بد است: وقتی سنجه هست، جای این بخش نیست."""
+    monkeypatch.setattr(
+        bot, "load_configs",
+        lambda: [named("a", loss_pct=0.0, jitter_ms=9.0, speed_kbps=430.0)],
+    )
+    monkeypatch.setattr(bot, "load_stats", lambda: {"pipeline": {
+        "layer7_http": {"total": 10, "passed": 1},
+        "summary": {"funnel": [10, 1], "speed_measured": 1},
+    }})
+    update = FakeUpdate(uid=ADMIN)
+    run(bot.cmd_quality(update, FakeContext()))
+    assert "چرا سنجه‌ای نیست" not in update.sent
 
 
 # ─── خطوط تونل در /test ───────────────────────────────────

@@ -9,10 +9,22 @@ import asyncio
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import clean_ip, main, vless
 from src.clean_ip import REVIVE_MARK
+
+
+@pytest.fixture(autouse=True)
+def isolated_ledger(tmp_path, monkeypatch):
+    """دفترِ نوبتِ لایه ۷ در تست به فایل واقعی مخزن نگاه نکند.
+
+    pipeline فقط می‌خواندش (نوشتن کارِ main است)، ولی همان خواندن هم نتیجه را
+    به «این ماشین دیروز چه آزمود» گره می‌زد.
+    """
+    monkeypatch.setattr(main, "LAYER7_LOG_FILE", str(tmp_path / "layer7.txt"))
 
 UUID = "11111111-2222-3333-4444-555555555555"
 CLEAN = "172.67.1.2"

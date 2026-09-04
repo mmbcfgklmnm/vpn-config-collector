@@ -10,9 +10,14 @@
 چرخش (rotation)
 ───────────────
 با انتشار هر ۵ دقیقه، بدون حافظه همان ۱۰ کانفیگ سریع‌ترِ ثابت تکرار می‌شد.
-PUBLISH_STATE_FILE نگه می‌دارد هر کانفیگ در کدام دوره پست شده و
-PUBLISH_COOLDOWN دوره بعد اجازه‌ی تکرار می‌دهد؛ با ۱۰ کانفیگ در هر دوره و
-cooldown=۶، در یک ساعت ~۱۲۰ کانفیگ متفاوت دیده می‌شود.
+PUBLISH_STATE_FILE نگه می‌دارد هر کانفیگ در کدام دوره پست شده.
+
+انتظار (cooldown) **خودتنظیم** است، نه ثابت: `effective_cooldown` آن را از
+اندازه‌ی پول حساب می‌کند، پس پولِ ۷۲۳ تایی با ۱۰ پست در هر دوره حدود ۷۲ دوره
+انتظار می‌گیرد و یک بار کامل چرخیده می‌شود. با ثابتِ ۶ دوره، بهترین کانفیگ
+نیم‌ساعت بعد برمی‌گشت و چون سرِ صف بود همان لحظه انتخاب می‌شد — عملاً گردش
+ابدی روی ~۶۰ کانفیگ اول. سطل‌های انتخاب هم مرتب شدند: **ندیده قبل از
+دیده‌شده**، حتی اگر کیفیتش کمی پایین‌تر باشد.
 
 اولویت انتخاب: اول کانفیگ‌های تأییدشده از ایران (برچسب IR در fragment)، بعد
 بین‌المللی‌ها به ترتیب تأخیر تونل، و اگر سهمیه پر نشد از پول ذخیره‌ی
@@ -35,7 +40,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import tg_md, vless
 from src.config import (
-    HTTP_TEST_ROUNDS, PUBLISH_COOLDOWN, PUBLISH_COUNT, PUBLISH_FILL_FROM_POOL,
+    HTTP_TEST_ROUNDS, PUBLISH_COOLDOWN, PUBLISH_COOLDOWN_AUTO,
+    PUBLISH_COOLDOWN_MAX, PUBLISH_COUNT, PUBLISH_FILL_FROM_POOL,
     PUBLISH_INTERVAL_MIN, PUBLISH_INTRO, PUBLISH_MSG_GAP_SEC,
     PUBLISH_STATE_FILE, PUBLISH_STRICT_COUNT, SUB_B64_URL, SUB_INTL_URL,
     SUB_IRAN_URL, SUB_MIRROR_URL, SUB_URL, TELEGRAM_BOT_TOKEN,
@@ -88,6 +94,25 @@ def rank_key(config: str) -> Tuple[int, float]:
     return (0 if iran > 0 else 1, latency)
 
 
+def effective_cooldown(pool_size: int, count: int) -> int:
+    """چند دوره یک کانفیگ کنار بماند — از *اندازه‌ی پول*، نه یک عدد ثابت.
+
+    اشکالی که این تابع حل می‌کند، شکایت صریح کاربر بود: «کانفیگ‌هایی که قبلاً
+    کار کرده‌اند نباید دوباره و دوباره فرستاده شوند.» با ثابتِ ۶ دوره و پول
+    ۷۲۳ تایی، بهترین کانفیگ نیم‌ساعت بعد دوباره واجد شرط می‌شد و چون سرِ صف
+    rank_key بود همان لحظه انتخاب می‌شد؛ نتیجه‌اش گردش ابدی روی ~۶۰ کانفیگ
+    اول و ندیده ماندن ۶۶۰ تای دیگر بود.
+
+    عدد درست از خود پول درمی‌آید: ‏۷۲۳ کانفیگ با ۱۰ پست در هر دوره یعنی
+    ۷۲ دوره تا یک بار کامل چرخیدن. سقف MAX هست تا پولِ بزرگ باعث نشود
+    کانفیگی عملاً هیچ‌وقت برنگردد و حافظه‌ی `posted` بی‌مرز رشد کند.
+    """
+    floor = max(1, PUBLISH_COOLDOWN)
+    if not PUBLISH_COOLDOWN_AUTO or pool_size <= 0 or count <= 0:
+        return floor
+    return max(floor, min(PUBLISH_COOLDOWN_MAX, pool_size // count))
+
+
 def select_for_publish(
     configs: List[str],
     state: Dict,
@@ -96,49 +121,65 @@ def select_for_publish(
 ) -> List[str]:
     """انتخاب کانفیگ‌های این دوره — سهمیه *باید* پر شود.
 
-    سه منبع، به همین ترتیب:
-      ۱. پول تأییدشده (`configs`) — `rank_key` خودش تأییدشده‌های ایران را جلو
-         می‌آورد. توجه: این‌جا **فیلتر ایران نداریم**؛ کانفیگ بین‌المللی هم
-         انتخاب می‌شود، فقط بعد از ایرانی‌ها.
-      ۲. پول ذخیره (`reserve`) — تست‌نشده‌ها، فقط برای پر کردن باقی سهمیه.
-      ۳. تکرار قدیمی‌ترین پست‌شده‌ها، اگر باز هم کم بود.
+    چهار سطل، به همین ترتیب اولویت:
+      ۱. **ندیده** — هیچ‌وقت پست نشده. بین خودشان با `rank_key` مرتب می‌شوند
+         (تأییدشده‌ی ایران اول، بعد کم‌تأخیرترین) و پول تأییدشده جلوی ذخیره است.
+      ۲. **سرد** — پست شده ولی دوره‌ی انتظارش تمام شده. قدیمی‌ترین اول.
+      ۳. **گرم** — هنوز در دوره‌ی انتظار است؛ فقط اگر سهمیه جور دیگری پر نشود.
+
+    قاعده‌ی مرکزی این تابع: **کانفیگِ ندیده همیشه از کانفیگِ دیده‌شده جلوتر
+    است، حتی اگر کیفیتش کمی پایین‌تر باشد.** نسخه‌ی قبلی فقط `rank_key` را
+    نگاه می‌کرد و سرِ صف را برمی‌داشت، پس تا وقتی بهترین کانفیگ در انتظار
+    نبود همیشه همان انتخاب می‌شد و پول عملاً هیچ‌وقت پیمایش نمی‌شد. مستقیم
+    همان چیزی که کاربر دید: «مثل اینکه دیگر دنبال کانفیگ نمی‌گردد و همان‌های
+    قبلی را می‌فرستد.»
 
     چرا «تازه‌ی ذخیره» جلوتر از «کهنه‌ی تأییدشده» است: تکرار کانفیگی که چند
     دقیقه پیش پست شده برای کاربر چیز تازه‌ای ندارد، ولی کانفیگ ذخیره یک
     گزینه‌ی *ندیده* است — و برچسب کارتش صریح می‌گوید تونلش تست نشده.
 
-    مشکلی که این تابع حل می‌کند: در دوره‌های واقعی فقط ۳ کانفیگ پست می‌شد،
-    چون پول تأییدشده کوچک بود و چیزی جایش را پر نمی‌کرد.
+    مشکلی که این تابع قبلاً حل کرد و باید حل‌شده بماند: در دوره‌های واقعی فقط
+    ۳ کانفیگ پست می‌شد، چون پول تأییدشده کوچک بود و چیزی جایش را پر نمی‌کرد.
     """
     count = count or PUBLISH_COUNT
     if count <= 0:
         return []
     cycle = int(state.get("cycle", 0))
     posted: Dict[str, int] = state.get("posted", {})
-    cooldown = max(1, PUBLISH_COOLDOWN)
 
-    fresh: List[str] = []
-    stale: List[Tuple[int, int, float, str]] = []
-    seen: set = set()
     # tier صفر پول تأییدشده است، tier یک ذخیره. کلید یکتایی short_id است نه
     # رشته‌ی کامل: یک endpoint می‌تواند در دو پول با برچسب تأخیر متفاوت باشد.
-    for tier, group in enumerate((configs or [], reserve or [])):
+    groups = (configs or [], reserve or [])
+    unique: List[Tuple[int, str, str]] = []
+    seen: set = set()
+    for tier, group in enumerate(groups):
         for cfg in sorted(dict.fromkeys(group), key=rank_key):
             sid = vless.short_id(cfg)
             if sid in seen:
                 continue
             seen.add(sid)
-            last = posted.get(sid)
-            if last is None or cycle - int(last) >= cooldown:
-                fresh.append(cfg)
-            else:
-                stale.append((int(last), tier, vless.get_latency_ms(cfg), cfg))
+            unique.append((tier, sid, cfg))
 
-    if len(fresh) >= count:
-        return fresh[:count]
-    stale.sort(key=lambda item: item[:3])
-    fresh.extend(cfg for *_, cfg in stale[: count - len(fresh)])
-    return fresh[:count]
+    cooldown = effective_cooldown(len(unique), count)
+
+    unseen: List[str] = []
+    cooled: List[Tuple[int, int, float, str]] = []
+    hot: List[Tuple[int, int, float, str]] = []
+    for tier, sid, cfg in unique:
+        last = posted.get(sid)
+        if last is None:
+            unseen.append(cfg)
+            continue
+        age_key = (int(last), tier, vless.get_latency_ms(cfg), cfg)
+        (cooled if cycle - int(last) >= cooldown else hot).append(age_key)
+
+    chosen = unseen[:count]
+    for bucket in (cooled, hot):
+        if len(chosen) >= count:
+            break
+        bucket.sort(key=lambda item: item[:3])
+        chosen.extend(cfg for *_, cfg in bucket[: count - len(chosen)])
+    return chosen[:count]
 
 
 def reserve_ids(configs: List[str], reserve: Optional[List[str]]) -> set:
@@ -153,15 +194,22 @@ def reserve_ids(configs: List[str], reserve: Optional[List[str]]) -> set:
     return {vless.short_id(c) for c in reserve} - verified
 
 
-def mark_published(state: Dict, configs: List[str]) -> Dict:
-    """ثبت اینکه این کانفیگ‌ها در دوره‌ی جاری پست شدند."""
+def mark_published(state: Dict, configs: List[str], cooldown: int = 0) -> Dict:
+    """ثبت اینکه این کانفیگ‌ها در دوره‌ی جاری پست شدند.
+
+    cooldown انتظارِ *مؤثرِ* همین دوره است (از `effective_cooldown`). مرز هرس
+    از آن حساب می‌شود نه از ثابتِ PUBLISH_COOLDOWN: با انتظارِ خودتنظیم،
+    هرسِ زودتر از موعد یعنی کانفیگِ پست‌شده دوباره «ندیده» به نظر بیاید و
+    همان تکرارِ قبلی برگردد — دقیقاً چیزی که می‌خواستیم از بین ببریم.
+    """
     cycle = int(state.get("cycle", 0)) + 1
     posted: Dict[str, int] = dict(state.get("posted", {}))
     for cfg in configs:
         posted[vless.short_id(cfg)] = cycle
     # هرس: شناسه‌هایی که خیلی قدیمی‌اند دیگر روی تصمیم اثر ندارند و فایل را
-    # بی‌دلیل بزرگ می‌کنند.
-    horizon = cycle - max(1, PUBLISH_COOLDOWN) * 4
+    # بی‌دلیل بزرگ می‌کنند. ضریب ۲ حاشیه می‌دهد تا کوچک شدن ناگهانی پول
+    # (یک اجرای ناموفق pipeline) حافظه‌ی چرخش را دور نریزد.
+    horizon = cycle - max(1, cooldown or PUBLISH_COOLDOWN) * 2
     posted = {k: v for k, v in posted.items() if v >= horizon}
     return {
         "cycle": cycle,
@@ -355,6 +403,9 @@ class Publisher:
 
         state = load_state()
         chosen = select_for_publish(configs, state, reserve=pool)
+        # همان انتظاری که انتخاب با آن تصمیم گرفت، تا هرسِ حافظه با آن جور باشد.
+        unique_pool = len({vless.short_id(c) for c in list(configs) + pool})
+        cooldown = effective_cooldown(unique_pool, PUBLISH_COUNT)
         if not chosen and not donated:
             logger.warning("⚠️ چیزی برای ارسال نماند")
             return result
@@ -368,6 +419,15 @@ class Publisher:
                 f"کانفیگ یکتا در دسترس بود (تأییدشده {len(configs)}، "
                 f"ذخیره {len(pool)})"
             )
+        # چند تای این دسته را کاربر قبلاً دیده؟ عدد صفر یعنی چرخش سالم است.
+        already = sum(
+            1 for c in chosen if vless.short_id(c) in (state.get("posted") or {})
+        )
+        if already:
+            logger.warning(
+                f"♻️ {already} از {len(chosen)} کانفیگ این دوره تکراری‌اند — "
+                "پول برای انتظارِ کامل کوچک است"
+            )
         iran_total = sum(1 for c in configs if vless.is_iran_verified(c))
         intl_total = max(0, len(set(configs)) - iran_total)
         result.update({
@@ -375,6 +435,8 @@ class Publisher:
             "ids": [vless.short_id(c) for c in chosen],
             "from_pool": from_pool,
             "quota_short": shortfall,
+            "repeated": already,
+            "cooldown": cooldown,
         })
 
         if with_intro:
@@ -414,7 +476,7 @@ class Publisher:
         else:
             failed += 1
 
-        save_state(mark_published(state, chosen + donated_ok))
+        save_state(mark_published(state, chosen + donated_ok, cooldown))
         result["sent"] = sent
         result["failed"] = failed
         result["donated_sent"] = donated_ok

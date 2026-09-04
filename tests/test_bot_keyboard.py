@@ -1,22 +1,33 @@
-"""تست کلید پنهان/نمایش کیبورد و رنگ دکمه‌ها.
+"""تست دکمه‌های پایین صفحه: کنترلِ پنهان/نمایش، نقش‌ها، متن و مسیر.
 
-خواسته‌ی کاربر دو تکه است: «دکمه‌ی خاموش/روشن کردن کیبورد» و «همه‌ی دکمه‌ها
-رنگی و مرتب». تکه‌ی اول یک تله‌ی ظریف دارد که این فایل قفلش می‌کند: هر پاسخی
-که `reply_markup=keyboard_for(...)` بفرستد، کیبوردِ تازه‌پنهان‌شده را همان
-لحظه برمی‌گرداند و دکمه بی‌اثر به نظر می‌رسد. پس تست‌ها *خودِ* reply_markup
-را می‌بینند، نه فقط متن پاسخ را.
+شکایت کاربر: «آن چیزی نیست که از Bot Keyboard Toggle منظورم بود؛ یک آیکن
+شبکه/کیبورد کنار کادر نوشتن است، فیچر خودِ تلگرام.» درست بود — و علتش یک
+پارامتر بود. مستند Bot API برای `is_persistent`:
 
-تکه‌ی دوم روی محیط محلی قابل تست نیست (PTB 21.1.1 پارامتر style را نمی‌شناسد
-و tg_ui آن را نمی‌فرستد تا کرش نکند)، پس این‌جا فقط چیزی تست می‌شود که در هر
-دو نسخه درست است: متن هر دکمه به‌تنهایی گویا باشد و مسیر هر دکمه وجود داشته
-باشد — رنگ تأکید است، تنها حامل معنا نیست.
+    «Requests clients to always show the keyboard when the regular keyboard
+    is hidden. Defaults to False, in which case the custom keyboard can be
+    hidden and opened with a keyboard icon.»
+
+یعنی `is_persistent=True` *دقیقاً همان آیکن را حذف می‌کند*. نسخه‌ی قبلی True
+می‌فرستاد و بعد با /keyboard و یک دکمه‌ی خودساخته جایش را پر می‌کرد. حالا
+پاس نمی‌شود، پس کنترل همان آیکنِ بومیِ کنار کادر نوشتن است.
+
+سه چیز این‌جا قفل می‌شود:
+  ۱. هیچ کیبوردی `is_persistent` نمی‌فرستد — تنها شرطِ بودنِ آن آیکن.
+  ۲. کیبورد ادمین دکمه‌ی کاربر ندارد (خواسته‌ی دومِ کاربر).
+  ۳. هیچ متنی /keyboard را وعده نمی‌دهد — آن دستور دیگر وجود ندارد.
+
+رنگ‌ها روی محیط محلی قابل تست نیستند (PTB 21.1.1 پارامتر style را نمی‌شناسد و
+tg_ui آن را نمی‌فرستد تا کرش نکند)، پس فقط چیزی تست می‌شود که در هر دو نسخه
+درست است: متن هر دکمه به‌تنهایی گویا باشد و مسیر داشته باشد — رنگ تأکید است،
+تنها حامل معنا نیست.
 """
 import asyncio
 import os
 import sys
 
 import pytest
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import ReplyKeyboardMarkup
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -88,113 +99,83 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def texts(keyboard: ReplyKeyboardMarkup) -> set:
-    return {b.text for row in keyboard.keyboard for b in row}
+KEYBOARDS = (bot.MAIN_KEYBOARD, bot.ADMIN_KEYBOARD)
 
 
-# ─── رفت و برگشت کلید ─────────────────────────────────────
-
-def test_the_toggle_hides_then_restores_the_keyboard():
-    context = FakeContext()
-
-    hide = FakeUpdate(uid=USER)
-    run(bot.cmd_keyboard(hide, context))
-    assert isinstance(hide.markup, ReplyKeyboardRemove)
-    assert bot.keyboard_hidden(context) is True
-
-    show = FakeUpdate(uid=USER)
-    run(bot.cmd_keyboard(show, context))
-    assert show.markup is bot.MAIN_KEYBOARD
-    assert bot.keyboard_hidden(context) is False
+def texts(*keyboards: ReplyKeyboardMarkup) -> set:
+    return {b.text for kb in keyboards for row in kb.keyboard for b in row}
 
 
-def test_the_admin_gets_the_admin_keyboard_back_not_the_plain_one():
-    """ادمین بعد از نمایش دوباره نباید ردیف‌های مدیریتی‌اش را از دست بدهد."""
-    context = FakeContext()
-    run(bot.cmd_keyboard(FakeUpdate(uid=ADMIN), context))
-    back = FakeUpdate(uid=ADMIN)
-    run(bot.cmd_keyboard(back, context))
-    assert back.markup is bot.ADMIN_KEYBOARD
+# ─── آیکنِ خودِ تلگرام ─────────────────────────────────────
+
+@pytest.mark.parametrize("keyboard", KEYBOARDS)
+def test_no_keyboard_asks_to_be_persistent(keyboard):
+    """قلبِ این فیچر: is_persistent نباید در payload باشد.
+
+    هر مقدارِ صریحی — حتی False — لازم نیست؛ چیزی که خرابی می‌سازد True است.
+    این تست روی to_dict نگاه می‌کند نه روی attribute، چون همان دیکشنری است که
+    واقعاً به تلگرام می‌رود و همان است که آیکن را می‌آورد یا می‌برد.
+    """
+    assert "is_persistent" not in keyboard.to_dict()
+    assert not keyboard.is_persistent
 
 
-def test_the_hide_message_names_the_way_back():
-    """با رفتن کیبورد، دکمه‌ی برگشت هم می‌رود — پس متن باید راه را بگوید."""
-    update = FakeUpdate(uid=USER)
-    run(bot.cmd_keyboard(update, FakeContext()))
-    assert "/keyboard" in update.sent
+@pytest.mark.parametrize("keyboard", KEYBOARDS)
+def test_the_keyboard_still_resizes_and_hints(keyboard):
+    """resize_keyboard نبود یعنی ۵ ردیف دکمه نصف صفحه‌ی گوشی را می‌گیرد."""
+    assert keyboard.resize_keyboard is True
+    assert (keyboard.input_field_placeholder or "").strip()
+
+
+def test_nothing_promises_the_removed_keyboard_command():
+    """دستور /keyboard حذف شد؛ متنی که وعده‌اش را بدهد کاربر را سرگردان می‌کند."""
+    assert not hasattr(bot, "cmd_keyboard")
+    assert "keyboard" not in {name for name, _d, _f in bot.USER_COMMANDS}
+
+    for handler in (bot.cmd_start, bot.cmd_help):
+        update = FakeUpdate(uid=USER)
+        run(handler(update, FakeContext()))
+        assert "/keyboard" not in update.sent
+
+
+# ─── نقش‌ها: کیبورد ادمین ≠ کیبورد کاربر ──────────────────
+
+def test_the_admin_keyboard_holds_no_user_buttons():
+    """خواسته‌ی کاربر: «دکمه‌های مخصوص کاربر نباید برای ادمین دیده شوند.»"""
+    assert not (texts(bot.ADMIN_KEYBOARD) & texts(bot.MAIN_KEYBOARD))
+    assert texts(bot.ADMIN_KEYBOARD) == set(bot.ADMIN_ROUTES)
+
+
+def test_the_user_keyboard_holds_no_admin_buttons():
+    """جهت دیگرِ همان مرز — دکمه‌ی ادمین در کیبورد کاربر یعنی «⛔ فقط ادمین»."""
+    assert not (set(bot.ADMIN_ROUTES) & texts(bot.MAIN_KEYBOARD))
+
+
+def test_keyboard_for_picks_by_role():
+    assert bot.keyboard_for(ADMIN) is bot.ADMIN_KEYBOARD
+    assert bot.keyboard_for(USER) is bot.MAIN_KEYBOARD
+    assert bot.keyboard_for(None) is bot.MAIN_KEYBOARD
+
+
+@pytest.mark.parametrize("uid,expected", [(USER, 0), (ADMIN, 1)])
+def test_start_and_help_carry_the_keyboard_of_the_role(uid, expected):
+    for handler in (bot.cmd_start, bot.cmd_help):
+        update = FakeUpdate(uid=uid)
+        run(handler(update, FakeContext()))
+        assert update.markup is KEYBOARDS[expected]
+
+
+@pytest.mark.parametrize("uid,expected", [(USER, 0), (ADMIN, 1)])
+def test_an_unknown_text_brings_the_buttons_back(uid, expected):
+    """اگر کاربر با آیکنِ تلگرام دکمه‌ها را بسته باشد، ربات خبر ندارد.
+
+    پس پاسخِ متنِ ناشناس کیبورد را دوباره می‌چسباند: همین راهِ برگشت است و
+    هزینه‌ای هم ندارد — کسی که دکمه نمی‌خواهد باز با همان آیکن می‌بندد.
+    """
+    update = FakeUpdate("چیز نامفهوم", uid=uid)
+    run(bot.handle_button(update, FakeContext()))
+    assert update.markup is KEYBOARDS[expected]
     assert "/help" in update.sent
-
-
-def test_the_button_text_reaches_the_same_handler():
-    """زدنِ «⌨️ پنهان کردن دکمه‌ها» و تایپ /keyboard باید یکی باشند."""
-    context = FakeContext()
-    update = FakeUpdate(bot.BTN_KEYBOARD, uid=USER)
-    run(bot.handle_button(update, context))
-    assert bot.keyboard_hidden(context) is True
-    assert isinstance(update.markup, ReplyKeyboardRemove)
-
-
-# ─── پنهان ماندن ──────────────────────────────────────────
-
-def test_a_hidden_keyboard_is_not_resurrected_by_the_next_reply():
-    """قلبِ این فیچر: /help نباید کیبوردِ پنهان‌شده را برگرداند."""
-    context = FakeContext()
-    run(bot.cmd_keyboard(FakeUpdate(uid=USER), context))
-
-    help_update = FakeUpdate(uid=USER)
-    run(bot.cmd_help(help_update, context))
-    assert help_update.markup is None          # None = «به کیبورد دست نزن»
-
-
-def test_help_shows_the_keyboard_when_it_was_never_hidden():
-    help_update = FakeUpdate(uid=USER)
-    run(bot.cmd_help(help_update, FakeContext()))
-    assert help_update.markup is bot.MAIN_KEYBOARD
-
-
-def test_the_unknown_text_hint_changes_when_buttons_are_hidden():
-    """«از دکمه‌های پایین استفاده کن» وقتی دکمه‌ای نیست دروغ است."""
-    context = FakeContext()
-    run(bot.cmd_keyboard(FakeUpdate(uid=USER), context))
-
-    lost = FakeUpdate("چیز نامفهوم", uid=USER)
-    run(bot.handle_button(lost, context))
-    assert "/keyboard" in lost.sent
-    assert lost.markup == "absent"             # کیبورد دست‌نخورده می‌ماند
-
-    seeing = FakeUpdate("چیز نامفهوم", uid=USER)
-    run(bot.handle_button(seeing, FakeContext()))
-    assert seeing.markup is bot.MAIN_KEYBOARD
-
-
-def test_start_is_a_reset_and_brings_the_keyboard_back():
-    context = FakeContext()
-    run(bot.cmd_keyboard(FakeUpdate(uid=USER), context))
-    started = FakeUpdate(uid=USER)
-    run(bot.cmd_start(started, context))
-    assert bot.keyboard_hidden(context) is False
-    assert started.markup is bot.MAIN_KEYBOARD
-
-
-def test_markup_for_falls_back_to_the_plain_keyboard_without_user_data():
-    """کانتکست بدون user_data (مثلاً از channel_post) نباید کرش کند."""
-    class NoData:
-        user_data = None
-
-    assert bot.keyboard_hidden(NoData()) is False
-    assert bot.markup_for(FakeUpdate(uid=USER), NoData()) is bot.MAIN_KEYBOARD
-
-
-# ─── ثبت دستور ────────────────────────────────────────────
-
-def test_keyboard_is_a_registered_command_not_only_a_button():
-    """اگر در USER_COMMANDS نباشد، main() هیچ CommandHandler نمی‌سازد و
-    /keyboard — همان راه برگشتی که پیامِ پنهان‌شدن وعده می‌دهد — کار نمی‌کند."""
-    names = {name for name, _desc, _fn in bot.USER_COMMANDS}
-    assert "keyboard" in names
-    assert dict((n, f) for n, _d, f in bot.USER_COMMANDS)["keyboard"] is (
-        bot.cmd_keyboard
-    )
 
 
 # ─── دکمه‌ها: مسیر و متن ───────────────────────────────────
@@ -202,37 +183,34 @@ def test_keyboard_is_a_registered_command_not_only_a_button():
 def test_every_keyboard_button_has_a_route():
     """دکمه‌ی بی‌مسیر به شاخه‌ی «متن ناشناس» می‌افتد و خراب به نظر می‌رسد."""
     routes = set(bot.BUTTON_ROUTES) | set(bot.ADMIN_ROUTES)
-    missing = texts(bot.ADMIN_KEYBOARD) - routes
+    missing = texts(*KEYBOARDS) - routes
     assert not missing, f"دکمه‌های بی‌مسیر: {missing}"
 
 
 def test_every_route_is_reachable_from_some_keyboard():
-    """مسیرِ بی‌دکمه کدِ مرده است — یا دکمه‌اش حذف شده یا اسمش عوض شده."""
-    orphan = (set(bot.BUTTON_ROUTES) | set(bot.ADMIN_ROUTES)) - texts(
-        bot.ADMIN_KEYBOARD
-    )
+    """مسیرِ بی‌دکمه کدِ مرده است — یا دکمه‌اش حذف شده یا اسمش عوض شده.
+
+    «some» یعنی اجتماعِ دو کیبورد: از وقتی ادمین ردیف‌های کاربر را نمی‌بیند،
+    هیچ کیبوردی به‌تنهایی همه‌ی مسیرها را ندارد.
+    """
+    orphan = (set(bot.BUTTON_ROUTES) | set(bot.ADMIN_ROUTES)) - texts(*KEYBOARDS)
     assert not orphan, f"مسیرهای بی‌دکمه: {orphan}"
-
-
-def test_admin_only_buttons_stay_out_of_the_user_keyboard():
-    user_texts = texts(bot.MAIN_KEYBOARD)
-    assert not (set(bot.ADMIN_ROUTES) & user_texts)
-    assert bot.BTN_KEYBOARD in user_texts       # کلید برای همه است
 
 
 def test_button_labels_carry_meaning_without_any_color():
     """کلاینت قدیمی (و PTB قدیمی) رنگ را نشان نمی‌دهد؛ متن باید کافی باشد."""
-    for label in texts(bot.ADMIN_KEYBOARD):
+    for label in texts(*KEYBOARDS):
         stripped = "".join(ch for ch in label if ch.isalpha() or ch.isspace())
         assert stripped.strip(), f"دکمه‌ی بی‌متن: {label!r}"
 
 
 def test_no_two_buttons_share_a_label():
     """متن دکمه کلید مسیریابی است؛ تکراری یعنی یکی از دو مسیر گم می‌شود."""
-    labels = [b.text for row in bot.ADMIN_KEYBOARD.keyboard for b in row]
+    labels = [b.text for kb in KEYBOARDS for row in kb.keyboard for b in row]
     assert len(labels) == len(set(labels))
 
 
-def test_rows_stay_narrow_enough_for_a_phone():
-    for row in bot.ADMIN_KEYBOARD.keyboard:
+@pytest.mark.parametrize("keyboard", KEYBOARDS)
+def test_rows_stay_narrow_enough_for_a_phone(keyboard):
+    for row in keyboard.keyboard:
         assert 1 <= len(row) <= 2

@@ -8,6 +8,7 @@
 import asyncio
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,11 +50,12 @@ def slow_probe(delay=100.0, loss=0.0, jitter=5.0) -> Probe:
     )
 
 
-def _patch(monkeypatch, fake, rescue_min=3, rounds=1):
+def _patch(monkeypatch, fake, rescue_min=3, rounds=1, budget=0):
     monkeypatch.setattr(http_tester, "probe_config", fake)
     monkeypatch.setattr(http_tester, "SPEED_RESCUE_MIN", rescue_min)
     monkeypatch.setattr(http_tester, "HTTP_TEST_ROUNDS", rounds)
     monkeypatch.setattr(http_tester, "HTTP_ROUND_GAP_SEC", 0)
+    monkeypatch.setattr(http_tester, "HTTP_TEST_BUDGET_SEC", budget)
 
 
 # ─── لرزش ─────────────────────────────────────────────────
@@ -119,7 +121,9 @@ def test_speed_rejects_are_rescued_when_nothing_passed(monkeypatch):
     configs = [cfg(f"s{i}") for i in range(3)]
     fake = FakeProbe({c: [slow_probe()] for c in configs})
     _patch(monkeypatch, fake, rescue_min=3)
-    passed, failed, reasons, quality = asyncio.run(http_tester._one_round(configs))
+    passed, failed, reasons, quality, _ = asyncio.run(
+        http_tester._one_round(configs)
+    )
     assert [c for c, _ in passed] == configs
     assert (failed, reasons) == (0, {})
     assert all(quality[c].speed_kbps == 0.0 for c in configs)
@@ -131,7 +135,7 @@ def test_speed_rejects_stay_rejected_when_someone_passed(monkeypatch):
     fast, slow = cfg("fast"), cfg("slow")
     fake = FakeProbe({fast: [ok_probe()], slow: [slow_probe()]})
     _patch(monkeypatch, fake, rescue_min=1)
-    passed, failed, reasons, quality = asyncio.run(
+    passed, failed, reasons, quality, _ = asyncio.run(
         http_tester._one_round([fast, slow])
     )
     assert [c for c, _ in passed] == [fast]
@@ -145,7 +149,7 @@ def test_rescue_needs_a_quorum(monkeypatch):
     only = cfg("only")
     fake = FakeProbe({only: [slow_probe()]})
     _patch(monkeypatch, fake, rescue_min=3)
-    passed, failed, _, _ = asyncio.run(http_tester._one_round([only]))
+    passed, failed, *_ = asyncio.run(http_tester._one_round([only]))
     assert (passed, failed) == ([], 1)
 
 
@@ -157,7 +161,9 @@ def test_real_failures_are_never_rescued(monkeypatch):
         lossy: [Probe(reason="افت بسته 75%")],
     })
     _patch(monkeypatch, fake, rescue_min=1)
-    passed, failed, reasons, _ = asyncio.run(http_tester._one_round([late, lossy]))
+    passed, failed, reasons, *_ = asyncio.run(
+        http_tester._one_round([late, lossy])
+    )
     assert (passed, failed) == ([], 2)
     assert set(reasons) == {"تأخیر واقعی 4200ms", "افت بسته 75%"}
 
@@ -260,3 +266,98 @@ def test_unmeasured_stability_is_not_tagged_as_perfect():
     assert vless.get_speed_kbps(plain) == 0.0
     assert vless.is_stable(plain) is False
     assert vless.is_stable(vless.add_tag(cfg("n"), 84.0, "NL", loss_pct=0.0)) is True
+
+
+# ─── بودجه‌ی زمانی لایه ۷ ─────────────────────────────────
+#
+# اجرای واقعی ۱۷:۴۶ نشان داد ترمزِ لایه ۷ زمان است نه تعداد: دور اول ۹۹۵
+# ثانیه برد و ۵۱۰۳ کانفیگِ پاس‌کرده‌ی لایه ۶ هیچ‌وقت نوبتشان نرسید. سقفِ
+# ثابتِ تعداد یک حدس است؛ بودجه‌ی زمانی خودش را با سرعت رانر تطبیق می‌دهد.
+# قاعده‌ی تغییرناپذیر: کانفیگی که نوبتش نرسید **رد نشده** — به پول ذخیره
+# می‌رود، نه به آمار شکست.
+
+
+class Clock:
+    """ساعت ساختگی؛ هر probe مقداری از بودجه را می‌خورد.
+
+    ساعت واقعی این تست را به مسابقه‌ی زمانی تبدیل می‌کرد (رزولوشن monotonic
+    روی ویندوز ~۱۵ms است)، پس زمان تزریق می‌شود تا نتیجه قطعی بماند.
+    """
+
+    def __init__(self, start: float = 1000.0):
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def test_expired_budget_skips_instead_of_failing(monkeypatch):
+    configs = [cfg(f"b{i}") for i in range(3)]
+    fake = FakeProbe({c: [ok_probe()] for c in configs})
+    _patch(monkeypatch, fake)
+    passed, failed, reasons, quality, skipped = asyncio.run(
+        http_tester._one_round(configs, deadline=time.monotonic() - 1)
+    )
+    assert (passed, failed, reasons, quality) == ([], 0, {}, {})
+    assert skipped == configs
+    assert fake.calls == 0        # هیچ xray ای بیهوده بالا نیامد
+
+
+def test_zero_deadline_means_no_budget(monkeypatch):
+    configs = [cfg(f"n{i}") for i in range(3)]
+    fake = FakeProbe({c: [ok_probe()] for c in configs})
+    _patch(monkeypatch, fake)
+    passed, _, _, _, skipped = asyncio.run(http_tester._one_round(configs, 0.0))
+    assert len(passed) == 3 and skipped == []
+
+
+def test_budget_stops_mid_round_and_routes_the_rest_to_reserve(monkeypatch):
+    """بودجه ۳۰ ثانیه، هر کانفیگ ۲۰ ثانیه → دو تا آزموده، سومی بی‌نوبت."""
+    configs = [cfg("first"), cfg("second"), cfg("third")]
+    clock = Clock()
+    plan = {c: [ok_probe(delay=100.0 + i)] for i, c in enumerate(configs)}
+    fake = FakeProbe(plan)
+    inner = fake.__call__
+
+    async def costly(config: str):
+        probe = await inner(config)
+        clock.now += 20.0
+        return probe
+
+    _patch(monkeypatch, costly, rounds=1, budget=30)
+    monkeypatch.setattr(http_tester, "time", clock)
+    monkeypatch.setattr(http_tester, "MAX_CONCURRENT_XRAY", 1)
+
+    valid, stats = asyncio.run(http_tester.http_test_batch(configs))
+    assert [c for c, _ in valid] == configs[:2]
+    assert stats["skipped_budget"] == 1
+    assert stats["_skipped"] == [configs[2]]
+    # ستون شکست دست‌نخورده می‌ماند: «تست نشد» ≠ «رد شد»
+    assert stats["failed"] == 0
+    assert stats["passed"] == 2
+    assert stats["round_stats"][0]["skipped"] == 1
+
+
+def test_later_rounds_are_not_budgeted(monkeypatch):
+    """دور اول بریده می‌شود، ولی دور ۲ و ۳ باید کامل اجرا شوند.
+
+    وگرنه شرطِ «همه‌ی دورها را پاس کرد» بی‌معنا می‌شود: کانفیگی که در دور
+    دوم بی‌نوبت مانده، نه تأییدشده است و نه ردشده.
+    """
+    good = cfg("good")
+    clock = Clock()
+    fake = FakeProbe({good: [ok_probe(delay=90.0), ok_probe(delay=110.0)]})
+
+    async def costly(config: str):
+        probe = await fake(config)
+        clock.now += 50.0        # هر دور کل بودجه را می‌خورد
+        return probe
+
+    _patch(monkeypatch, costly, rounds=2, budget=30)
+    monkeypatch.setattr(http_tester, "time", clock)
+    monkeypatch.setattr(http_tester, "MAX_CONCURRENT_XRAY", 1)
+
+    valid, stats = asyncio.run(http_tester.http_test_batch([good]))
+    assert valid == [(good, 100.0)]      # میانه‌ی ۹۰ و ۱۱۰ — هر دو دور اجرا شد
+    assert stats["skipped_budget"] == 0
+    assert len(stats["round_stats"]) == 2

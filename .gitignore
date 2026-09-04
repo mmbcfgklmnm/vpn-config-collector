@@ -18,3 +18,12 @@ configs/.donate_salt
 # وضعیت ماندگار ربات (روشن/خاموش) — مخصوص همان ماشین است.
 configs/bot_state.json
 configs/bot_state.json.tmp
+# حافظه‌ی چرخش انتشار. مخصوص همان ماشینی است که ربات را اجرا می‌کند؛ اگر
+# commit شود، هر اجرای workflow آن را با وضعیتِ رانر عوض می‌کند و کانفیگی که
+# ربات تازه پست کرده «ندیده» به نظر می‌آید — یعنی برگشتِ همان تکرار.
+configs/publish_state.json
+configs/publish_state.json.tmp
+# فقط فایلِ نیمه‌کاره. خودِ configs/layer7_log.txt عمداً commit می‌شود:
+# حافظه‌ی «کدام کانفیگ‌ها از تونل آزموده شده‌اند» را همان workflow می‌نویسد و
+# همان می‌خواند، و بدونش هر اجرا از صفر شروع می‌کند.
+configs/layer7_log.txt.tmp

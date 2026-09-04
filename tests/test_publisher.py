@@ -265,3 +265,86 @@ def test_sub_message_splits_domestic_and_international(monkeypatch):
 def test_sub_message_hides_intl_link_when_none(monkeypatch):
     monkeypatch.setattr(pub, "SUB_INTL_URL", "https://x/international.txt")
     assert "https://x/international.txt" not in pub.build_sub_message(10, 10, 0)
+
+
+# ─── انتظارِ خودتنظیم ─────────────────────────────────────
+#
+# شکایت صریح کاربر: «کانفیگ‌هایی که قبلاً کار کرده‌اند نباید دوباره و دوباره
+# فرستاده شوند.» با انتظارِ ثابتِ ۶ دوره و پول ۷۲۳ تایی، بهترین کانفیگ
+# نیم‌ساعت بعد دوباره واجد شرط می‌شد و چون سرِ صف rank_key بود همان لحظه
+# انتخاب می‌شد؛ نتیجه گردش ابدی روی ~۶۰ کانفیگ اول بود.
+
+def test_cooldown_scales_with_pool_size():
+    """۷۲۰ کانفیگ با ۱۰ پست در هر دوره = ۷۲ دوره تا یک چرخش کامل."""
+    assert pub.effective_cooldown(720, 10) == 72
+
+
+def test_cooldown_never_drops_below_the_floor(monkeypatch):
+    """پول کوچک انتظار را به صفر نمی‌رساند؛ کفِ PUBLISH_COOLDOWN می‌ماند."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 6)
+    assert pub.effective_cooldown(20, 10) == 6      # 20//10 = 2 → کف ۶
+    assert pub.effective_cooldown(0, 10) == 6
+    assert pub.effective_cooldown(720, 0) == 6
+
+
+def test_cooldown_is_capped_so_memory_stays_bounded(monkeypatch):
+    """بدون سقف، پولِ بزرگ یعنی کانفیگ هیچ‌وقت برنمی‌گردد و posted بی‌مرز رشد می‌کند."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN_MAX", 100)
+    assert pub.effective_cooldown(90_000, 10) == 100
+
+
+def test_cooldown_can_be_pinned_to_the_constant(monkeypatch):
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN_AUTO", False)
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 6)
+    assert pub.effective_cooldown(720, 10) == 6
+
+
+# ─── ندیده قبل از دیده‌شده ────────────────────────────────
+
+def test_unseen_beats_a_better_ranked_config_out_of_cooldown(monkeypatch):
+    """قلبِ اشکال: SLOW_IRAN رتبه‌ی بهتری دارد و انتظارش هم تمام شده، ولی
+    MID_PLAIN هنوز هیچ‌وقت پست نشده — پس نوبت اوست.
+
+    نسخه‌ی قبلی هر دو را در یک سطل می‌ریخت و با rank_key مرتب می‌کرد، پس
+    کانفیگِ سرِ صف هر بار که انتظارش تمام می‌شد فوراً برمی‌گشت.
+    """
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN_AUTO", False)
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 2)
+    state = {"cycle": 9, "posted": {vless.short_id(SLOW_IRAN): 1}}
+    assert pub.select_for_publish([SLOW_IRAN, MID_PLAIN], state, count=1) == [MID_PLAIN]
+
+
+def test_seen_configs_only_fill_what_unseen_cannot(monkeypatch):
+    """سطل ندیده اول تخلیه می‌شود، بعد سرد‌شده‌ها سهمیه را پر می‌کنند."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN_AUTO", False)
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 2)
+    state = {"cycle": 9, "posted": {vless.short_id(SLOW_IRAN): 1}}
+    chosen = pub.select_for_publish(
+        [SLOW_IRAN, MID_PLAIN, FAST_PLAIN], state, count=3
+    )
+    assert chosen[-1] == SLOW_IRAN
+    assert set(chosen[:2]) == {MID_PLAIN, FAST_PLAIN}
+
+
+def test_whole_pool_is_shown_before_anything_repeats(monkeypatch):
+    """قرارداد کاربر به‌صورت عدد: تا کل پول یک بار دیده نشود، تکرار نداریم."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 6)
+    pool = [cfg(n, latency=float(n)) for n in range(20, 50)]   # ۳۰ کانفیگ
+    state = {"cycle": 0, "posted": {}}
+    seen: list = []
+    for _ in range(10):            # ۱۰ دوره × ۳ = ۳۰ پست
+        chosen = pub.select_for_publish(pool, state, count=3)
+        seen.extend(vless.short_id(c) for c in chosen)
+        state = pub.mark_published(
+            state, chosen, pub.effective_cooldown(len(pool), 3)
+        )
+    assert len(seen) == 30 and len(set(seen)) == 30
+
+
+def test_rotation_memory_does_not_grow_without_bound(monkeypatch):
+    """هرس با انتظارِ *مؤثر* هم‌راستا است: نه زودتر (تکرار برمی‌گردد)، نه هرگز."""
+    monkeypatch.setattr(pub, "PUBLISH_COOLDOWN", 2)
+    state = {"cycle": 500, "posted": {"OLD1": 1, "OLD2": 480, "NEW": 499}}
+    state = pub.mark_published(state, [FAST_PLAIN], cooldown=10)
+    # horizon = 501 - 10*2 = 481 → OLD1 و OLD2 می‌روند، NEW می‌ماند
+    assert set(state["posted"]) == {"NEW", vless.short_id(FAST_PLAIN)}

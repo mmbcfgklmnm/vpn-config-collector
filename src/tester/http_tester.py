@@ -53,10 +53,11 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from src import vless
 from src.config import (
-    HTTP_ROUND_GAP_SEC, HTTP_TEST_ROUNDS, MAX_CONCURRENT_XRAY, MAX_JITTER_MS,
-    MAX_PACKET_LOSS_PCT, PROBE_COUNT, PROBE_GAP_SEC, REAL_DELAY_MAX_MS,
-    SPEED_MIN_KBPS, SPEED_RESCUE_MIN, SPEED_TEST_BYTES, SPEED_TEST_ENABLED,
-    SPEED_TEST_TIMEOUT_SEC, SPEED_TEST_URL, XRAY_PATH, XRAY_TIMEOUT_SEC,
+    HTTP_ROUND_GAP_SEC, HTTP_TEST_BUDGET_SEC, HTTP_TEST_ROUNDS,
+    MAX_CONCURRENT_XRAY, MAX_JITTER_MS, MAX_PACKET_LOSS_PCT, PROBE_COUNT,
+    PROBE_GAP_SEC, REAL_DELAY_MAX_MS, SPEED_MIN_KBPS, SPEED_RESCUE_MIN,
+    SPEED_TEST_BYTES, SPEED_TEST_ENABLED, SPEED_TEST_TIMEOUT_SEC,
+    SPEED_TEST_URL, XRAY_PATH, XRAY_TIMEOUT_SEC,
 )
 from src.logger import get_logger
 
@@ -514,10 +515,17 @@ async def http_test_single(config: str) -> Tuple[bool, float, str]:
 
 async def _one_round(
     configs: List[str],
-) -> Tuple[List[Tuple[str, float]], int, dict, dict]:
-    """یک دور سنجش → (قبولی‌ها با تأخیر، تعداد رد، دلایل، سنجه‌ی هر کانفیگ)."""
+    deadline: float = 0.0,
+) -> Tuple[List[Tuple[str, float]], int, dict, dict, List[str]]:
+    """یک دور سنجش → (قبولی‌ها با تأخیر، تعداد رد، دلایل، سنجه، تست‌نشده‌ها).
+
+    deadline زمانِ monotonic ای است که بعد از آن کانفیگ تازه شروع نمی‌شود.
+    کانفیگی که نوبتش نرسیده **رد نمی‌شود** و در لیست پنجم برمی‌گردد تا به پول
+    ذخیره برود؛ همان قاعده‌ی همیشگی: «تست نشد» ≠ «رد شد».
+    """
     passed: List[Tuple[str, float]] = []
     speed_rejects: List[Tuple[str, Probe]] = []
+    skipped: List[str] = []
     quality: dict = {}
     failed = 0
     reasons: dict = {}
@@ -525,6 +533,10 @@ async def _one_round(
 
     async def bounded(cfg: str):
         async with semaphore:
+            # بررسی *داخل* semaphore: صفِ انتظار می‌تواند دقایق طول بکشد و
+            # تصمیم باید با ساعتِ لحظه‌ی اجرا گرفته شود، نه لحظه‌ی صف‌بندی.
+            if deadline and time.monotonic() >= deadline:
+                return cfg, None
             return cfg, await probe_config(cfg)
 
     results = await asyncio.gather(
@@ -539,7 +551,9 @@ async def _one_round(
             reasons[name] = reasons.get(name, 0) + 1
             continue
         cfg, probe = item
-        if probe.ok:
+        if probe is None:
+            skipped.append(cfg)
+        elif probe.ok:
             passed.append((cfg, probe.delay_ms))
             quality[cfg] = probe
         elif probe.speed_only_fail:
@@ -569,7 +583,7 @@ async def _one_round(
             failed += 1
             reasons[probe.reason] = reasons.get(probe.reason, 0) + 1
 
-    return passed, failed, reasons, quality
+    return passed, failed, reasons, quality, skipped
 
 
 def _aggregate(probes: List[Probe]) -> dict:
@@ -597,11 +611,19 @@ async def http_test_batch(
     خروجی همان دوگانه‌ی همیشگی است (لیست (کانفیگ، تأخیر) و آمار)، تا هیچ
     فراخوانی‌ای نشکند؛ سنجه‌های تازه در stats["_quality"] سوار می‌شوند —
     همان الگوی stats["_reserve"] که لینک‌ها را از stats.json دور نگه می‌دارد.
+
+    بودجه‌ی زمانی (HTTP_TEST_BUDGET_SEC) دورِ اول را می‌بُرد، نه کل کار: دورهای
+    ۲ و ۳ فقط روی بازمانده‌ها اجرا می‌شوند و ارزان‌اند، و نصفه رها کردنشان یعنی
+    شرط «همه‌ی دورها را پاس کرد» دیگر معنا ندارد. کانفیگی که نوبتش نرسید در
+    stats["_skipped"] برمی‌گردد تا فراخوان به پول ذخیره بفرستدش.
     """
     rounds = max(1, HTTP_TEST_ROUNDS)
+    budget = max(0, HTTP_TEST_BUDGET_SEC)
+    deadline = time.monotonic() + budget if budget else 0.0
     logger.info(
         f"🌐 تأخیر واقعی + پایداری + سرعت برای {len(configs)} کانفیگ در "
-        f"{rounds} دور (همزمان: {MAX_CONCURRENT_XRAY})..."
+        f"{rounds} دور (همزمان: {MAX_CONCURRENT_XRAY}"
+        + (f" | بودجه: {budget}s)" if budget else ")") + "..."
     )
 
     survivors = list(configs)
@@ -609,6 +631,7 @@ async def http_test_batch(
     per_config_probes: dict = {}
     round_stats: List[dict] = []
     reasons: dict = {}
+    skipped: List[str] = []
 
     for index in range(1, rounds + 1):
         if not survivors:
@@ -619,7 +642,11 @@ async def http_test_batch(
             await asyncio.sleep(HTTP_ROUND_GAP_SEC)
 
         started = time.monotonic()
-        passed, failed, round_reasons, quality = await _one_round(survivors)
+        # فقط دور اول بودجه‌بندی می‌شود؛ ورودی دورهای بعد کوچک است.
+        passed, failed, round_reasons, quality, round_skipped = await _one_round(
+            survivors, deadline if index == 1 else 0.0
+        )
+        skipped.extend(round_skipped)
         for reason, count in round_reasons.items():
             reasons[reason] = reasons.get(reason, 0) + count
         for cfg, ms in passed:
@@ -632,13 +659,21 @@ async def http_test_batch(
             "input": len(survivors),
             "passed": len(passed),
             "failed": failed,
+            "skipped": len(round_skipped),
             "duration_seconds": round(time.monotonic() - started, 1),
         })
         logger.info(
             f"   دور {index}/{rounds}: {len(passed)}/{len(survivors)} پاس | "
             f"{round_stats[-1]['duration_seconds']}s"
+            + (f" | {len(round_skipped)} بی‌نوبت (بودجه)" if round_skipped else "")
         )
         survivors = [cfg for cfg, _ in passed]
+
+    if skipped:
+        logger.warning(
+            f"⚠️ بودجه‌ی {budget}s لایه ۷ تمام شد؛ {len(skipped)} کانفیگ "
+            "آزموده نشد و به پول ذخیره می‌رود (تست نشد ≠ رد شد)"
+        )
 
     # میانه‌ی دورها؛ نماینده‌ی واقع‌بینانه‌تری از تأخیر است تا بهترین دور.
     valid: List[Tuple[str, float]] = [
@@ -659,7 +694,9 @@ async def http_test_batch(
     stats = {
         "total": len(configs),
         "passed": len(valid),
-        "failed": len(configs) - len(valid),
+        # بی‌نوبت‌مانده‌ها رد نشدند، پس در failed هم شمرده نمی‌شوند.
+        "failed": len(configs) - len(valid) - len(skipped),
+        "skipped_budget": len(skipped),
         "rounds": rounds,
         "round_stats": round_stats,
         "avg_ms": round(sum(latencies) / len(latencies), 1) if latencies else 0,
@@ -670,8 +707,9 @@ async def http_test_batch(
         "zero_loss": sum(1 for loss in losses if loss == 0),
         "top_reasons": dict(sorted(reasons.items(), key=lambda x: -x[1])[:3]),
         # کانال کناری: دیکشنری کانفیگ→سنجه. فراخوان آن را pop می‌کند تا
-        # لینک‌ها هیچ‌وقت داخل stats.json ننشینند.
+        # لینک‌ها هیچ‌وقت داخل stats.json ننشینند. _skipped هم همین‌طور.
         "_quality": quality_map,
+        "_skipped": skipped,
     }
     logger.info(
         f"لایه ۷ (تأخیر واقعی): {stats['passed']}/{stats['total']} بعد از "

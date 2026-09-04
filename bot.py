@@ -14,8 +14,9 @@ JobQueue هم به آن نیاز دارد، پس حلقه‌ی انتشار asyn
 
 تازه‌های این نسخه
 ─────────────────
-  • دکمه‌های ثابت پایین چت (ReplyKeyboardMarkup با is_persistent) — کاربر
-    برای کارهای رایج چیزی تایپ نمی‌کند.
+  • دکمه‌های پایین چت (ReplyKeyboardMarkup) — کاربر برای کارهای رایج چیزی
+    تایپ نمی‌کند. پنهان/نمایش‌شان کارِ آیکنِ خودِ تلگرام کنار کادر نوشتن است،
+    نه دستور و دکمه‌ی خودساخته (توضیح کامل: بخش «دکمه‌های پایین صفحه»).
   • کارت مشخصات از src/publisher/renderer.py می‌آید؛ دقیقاً همان کارتی که در
     کانال پست می‌شود، پس ربات و کانال از هم واگرا نمی‌شوند.
   • /iran فقط کانفیگ‌های تأییدشده از داخل ایران (برچسب IR در fragment).
@@ -37,13 +38,13 @@ import os
 import random
 import sys
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 import qrcode
 from telegram import (
     BotCommand, BotCommandScopeChat, InlineKeyboardMarkup, ReplyKeyboardMarkup,
-    ReplyKeyboardRemove, Update,
+    Update,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -340,8 +341,16 @@ def make_qr(text: str) -> io.BytesIO:
 
 
 # ─── دکمه‌های ثابت پایین صفحه ──────────────────────────────
-# درخواست کاربر: دکمه‌ها همان‌جا که کیبورد است بمانند. is_persistent یعنی
-# کیبورد بعد از هر پیام بسته نمی‌شود؛ فقط یک بار در /start فرستادنش کافی است.
+# چرا این بخش عوض شد: کاربر گفت «آن چیزی نیست که از Bot Keyboard Toggle
+# منظورم بود؛ یک آیکن شبکه/کیبورد کنار کادر نوشتن است، فیچر خودِ تلگرام.»
+# درست هم بود — و علتش یک پارامتر بود. مستند Bot API برای is_persistent:
+# «Requests clients to always show the keyboard when the regular keyboard is
+# hidden. Defaults to False, in which case the custom keyboard can be hidden
+# and opened with a keyboard icon.» یعنی is_persistent=True *دقیقاً همان
+# آیکن را حذف می‌کند*. نسخه‌ی قبلی True می‌فرستاد و بعد با یک دستور و یک
+# دکمه‌ی سرخِ خودساخته جایش را پر می‌کرد؛ حالا False است و کنترل، همان
+# آیکنِ بومیِ کنار کادر نوشتن است — بدون دستور، بدون دکمه، در همه‌ی
+# کلاینت‌ها یکسان.
 #
 # رنگ‌ها (Bot API 9.4) از src/tg_ui.py می‌آیند و روی PTB قدیمی‌تر خودکار حذف
 # می‌شوند. رنگ هیچ‌وقت تنها حامل معنا نیست — متن هر دکمه خودش گویا است، وگرنه
@@ -357,9 +366,6 @@ BTN_DONATE = "🎁 اهدای کانفیگ"
 BTN_STATS = "📊 آمار"
 BTN_QR = "📷 QR"
 BTN_HELP = "❓ راهنما"
-# کلید خودِ کیبورد. بعد از زدنش کیبورد می‌رود، پس خودِ دکمه هم می‌رود —
-# راه برگشت دستور /keyboard است و متن پیامِ خداحافظی همان را می‌گوید.
-BTN_KEYBOARD = "⌨️ پنهان کردن دکمه‌ها"
 # ردیف ادمین — فقط برای کسی که در ADMIN_IDS است ساخته می‌شود. اینها همان
 # دستورهای ادمین‌اند، پس اگر کاربر عادی متنشان را دستی تایپ کند، دکوراتور
 # admin_only جلویش را می‌گیرد؛ کیبورد لایه‌ی راحتی است نه لایه‌ی امنیت.
@@ -374,14 +380,13 @@ BTN_A_HEALTH = "🩺 سلامت منابع"
 # همه‌چیز برجسته باشد هیچ‌چیز برجسته نیست:
 #   سبز  = چیزی به تو *می‌دهد* (کانفیگ، اشتراک، اهدا)
 #   آبی  = گشتن و دیدن (کشور، لیست، آمار، QR، راهنما)
-#   سرخ  = چیزی را *خاموش* می‌کند (پنهان کردن کیبورد، مکث انتشار)
+#   سرخ  = چیزی را *خاموش* می‌کند (مکث انتشار)
 _USER_ROWS = [
     [tg_ui.kb(BTN_BEST, tg_ui.SUCCESS), tg_ui.kb(BTN_IRAN, tg_ui.SUCCESS)],
     [tg_ui.kb(BTN_COUNTRY, tg_ui.PRIMARY), tg_ui.kb(BTN_RANDOM, tg_ui.SUCCESS)],
     [tg_ui.kb(BTN_LIST, tg_ui.PRIMARY), tg_ui.kb(BTN_SUB, tg_ui.SUCCESS)],
     [tg_ui.kb(BTN_DONATE, tg_ui.SUCCESS), tg_ui.kb(BTN_STATS, tg_ui.PRIMARY)],
     [tg_ui.kb(BTN_QR, tg_ui.PRIMARY), tg_ui.kb(BTN_HELP, tg_ui.PRIMARY)],
-    [tg_ui.kb(BTN_KEYBOARD, tg_ui.DANGER)],
 ]
 
 _ADMIN_ROWS = [
@@ -393,46 +398,31 @@ _ADMIN_ROWS = [
 ]
 
 
-def _keyboard(rows) -> ReplyKeyboardMarkup:
+def _keyboard(rows, placeholder: str) -> ReplyKeyboardMarkup:
+    """صفحه‌کلید ثابت. is_persistent عمداً پاس نمی‌شود (پیش‌فرض False).
+
+    با False، تلگرام خودش آیکنِ کیبورد را کنار کادر نوشتن می‌گذارد تا کاربر
+    دکمه‌ها را ببندد و باز کند. با True آن آیکن نیست و بستنِ دکمه‌ها فقط با
+    ReplyKeyboardRemove از سمت ربات ممکن است — همان چیزی که کاربر نمی‌خواست.
+    """
     return ReplyKeyboardMarkup(
         rows,
         resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="یک دکمه را بزن یا /help",
+        input_field_placeholder=placeholder,
     )
 
 
-MAIN_KEYBOARD = _keyboard(_USER_ROWS)
-ADMIN_KEYBOARD = _keyboard(_USER_ROWS + _ADMIN_ROWS)
-
-# کلید حالتِ کیبورد در حافظه‌ی همان کاربر. عمداً روی دیسک نمی‌رود: ذخیره‌ی
-# ترجیح هر کاربر یعنی نگه‌داشتن شناسه‌ی تلگرامش روی دیسک، و بخش اهدا برای
-# همین شناسه‌ها را هش می‌کند. یک ترجیح ظاهری ارزش آن معاوضه را ندارد؛
-# با restart کیبورد برمی‌گردد که خودش پیش‌فرض درست است.
-KEYBOARD_HIDDEN = "keyboard_hidden"
+MAIN_KEYBOARD = _keyboard(_USER_ROWS, "یک دکمه را بزن یا /help")
+# خواسته‌ی کاربر: «دکمه‌های مخصوص کاربر نباید برای ادمین دیده شوند.» پس
+# کیبورد ادمین فقط ردیف‌های مدیریتی است، نه جمعِ دو تا. ادمین چیزی از دست
+# نمی‌دهد: همه‌ی دستورهای کاربر در منوی دستورهای خودش ثبت می‌شوند
+# (BotCommandScopeChat در setup_commands) و تایپ کردنشان هم کار می‌کند.
+ADMIN_KEYBOARD = _keyboard(_ADMIN_ROWS, "دستور ادمین یا /help")
 
 
 def keyboard_for(uid: Optional[int]) -> ReplyKeyboardMarkup:
-    """کیبورد بر اساس نقش — ادمین سه ردیف اضافه می‌بیند."""
+    """کیبورد بر اساس نقش — ادمین کیبورد مدیریتی می‌بیند، نه کیبورد کاربر."""
     return ADMIN_KEYBOARD if is_admin(uid) else MAIN_KEYBOARD
-
-
-def keyboard_hidden(context) -> bool:
-    data = getattr(context, "user_data", None)
-    return bool(data and data.get(KEYBOARD_HIDDEN))
-
-
-def markup_for(update: Update, context) -> Optional[ReplyKeyboardMarkup]:
-    """کیبورد، یا None اگر کاربر خودش پنهانش کرده.
-
-    بدون این، هر پیامی که `reply_markup=keyboard_for(...)` می‌فرستد کیبوردِ
-    پنهان‌شده را همان لحظه برمی‌گرداند و دکمه‌ی پنهان‌کردن بی‌اثر به نظر
-    می‌رسد. None یعنی «به کیبورد دست نزن»، پس حالت انتخابیِ کاربر می‌ماند.
-    """
-    if keyboard_hidden(context):
-        return None
-    user = update.effective_user
-    return keyboard_for(user.id if user else None)
 
 
 async def reply(update: Update, text: str, **kwargs) -> None:
@@ -530,11 +520,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ts = str(stats.get("timestamp", ""))[:16].replace("T", " ")
     user = update.effective_user
     name = tg_md.strip_md(user.first_name if user else "", 30) or "دوست من"
-    # ‏/start شروع از نو است، پس کیبورد پنهان‌شده هم برمی‌گردد. اگر پرچم را
-    # پاک نکنیم، کیبورد دیده می‌شود ولی حالت ذخیره‌شده «پنهان» می‌ماند و
-    # پیام بعدی دوباره سعی می‌کند مخفی نگهش دارد.
-    if context.user_data is not None:
-        context.user_data.pop(KEYBOARD_HIDDEN, None)
 
     text = (
         f"👋 سلام *{name}*!\n\n"
@@ -545,10 +530,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  🇮🇷 {len(iran)} تأییدشده از داخل ایران\n"
         f"  🕐 آخرین آپدیت: {ts or 'نامشخص'}\n\n"
         f"👇 از دکمه‌های پایین استفاده کن — /help برای همه‌ی دستورها.\n"
-        f"⌨️ دکمه‌ها اذیت می‌کنند؟ /keyboard آن‌ها را پنهان و برمی‌گرداند."
+        f"⌨️ دکمه‌ها اذیت می‌کنند؟ با آیکنِ کیبورد کنار کادر نوشتن ببندشان."
     )
     if is_admin(user.id if user else None):
-        text += "\n\n🛠️ *دسترسی ادمین فعال* — سه ردیف آخر کیبورد مخصوص شماست."
+        text += "\n\n🛠️ *دسترسی ادمین فعال* — کیبورد پایین، دستورهای مدیریتی است."
     await reply(update, text, reply_markup=keyboard_for(user.id if user else None))
 
 
@@ -770,8 +755,14 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # درخواست کاربر: «امکان انتخاب کانفیگ بر اساس موقعیت/کشور». برچسب کشور از
 # لایه‌ی ۶ (Geo) در خود fragment نشسته، پس این‌جا فقط گروه‌بندی است — هیچ
 # درخواست شبکه‌ای لازم نیست.
+#
+# شکایت کاربر: «چرا انتخاب کشور فقط آمریکا است؟» دو علت داشت. علت اصلی در
+# لایه ۶ بود (کوئری به‌ازای هر کانفیگ → سهمیه‌ی API می‌سوخت → ۷۲٪ کانفیگ‌ها
+# «نامعلوم») که همان‌جا درست شد؛ اندازه‌گیریِ بعدش روی داده‌ی واقعی ۳۸ کشور
+# داد. علت دوم همین‌جا بود: صفحه‌کلید فقط ۱۲ دکمه می‌ساخت و بقیه فقط با
+# تایپ کردن `/country XX` قابل دسترسی بودند. حالا صفحه‌بندی می‌شود.
 
-COUNTRY_BTN_ROWS = 4        # ۴ ردیف × ۳ ستون = حداکثر ۱۲ کشور در یک پیام
+COUNTRY_PAGE_SIZE = 12      # ۴ ردیف × ۳ ستون در هر صفحه
 
 
 def country_counts(configs: List[str]) -> Dict[str, int]:
@@ -784,35 +775,55 @@ def country_counts(configs: List[str]) -> Dict[str, int]:
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
-def country_keyboard(counts: Dict[str, int]) -> InlineKeyboardMarkup:
+def country_page(
+    counts: Dict[str, int], page: int = 0
+) -> Tuple[List[Tuple[str, int]], int, int]:
+    """(کشورهای این صفحه، شماره‌ی صفحه‌ی نرمال‌شده، تعداد صفحه‌ها).
+
+    صفحه چرخشی است: بعد از آخرین صفحه به اولی برمی‌گردد. برای کاربری که
+    دکمه را پشت‌سرهم می‌زند این طبیعی‌تر از دکمه‌ی خاموش است.
+    """
+    items = list(counts.items())
+    pages = max(1, -(-len(items) // COUNTRY_PAGE_SIZE))
+    page = page % pages if pages else 0
+    start = page * COUNTRY_PAGE_SIZE
+    return items[start:start + COUNTRY_PAGE_SIZE], page, pages
+
+
+def country_keyboard(counts: Dict[str, int], page: int = 0) -> InlineKeyboardMarkup:
     """سه دکمه در هر ردیف — بیشتر از این روی موبایل متن دکمه بریده می‌شود.
 
-    سه کشور پرکانفیگ سبزند و بقیه آبی: عدد کنار پرچم هم همان را می‌گوید، پس
-    رنگ فقط تأکید است نه تنها حامل معنا (کلاینت قدیمی رنگ را نشان نمی‌دهد).
+    سه کشور پرکانفیگ (در صفحه‌ی اول) سبزند و بقیه آبی: عدد کنار پرچم هم
+    همان را می‌گوید، پس رنگ فقط تأکید است نه تنها حامل معنا (کلاینت قدیمی
+    رنگ را نشان نمی‌دهد).
     """
+    shown, page, pages = country_page(counts, page)
     buttons = [
         tg_ui.ikb(f"{renderer.flag(code)} {code} ({n})",
-                  tg_ui.SUCCESS if index < 3 else tg_ui.PRIMARY,
+                  tg_ui.SUCCESS if page == 0 and index < 3 else tg_ui.PRIMARY,
                   callback_data=f"co_{code}")
-        for index, (code, n) in enumerate(list(counts.items())[:COUNTRY_BTN_ROWS * 3])
+        for index, (code, n) in enumerate(shown)
     ]
     rows = [buttons[i:i + 3] for i in range(0, len(buttons), 3)]
+    if pages > 1:
+        rows.append([
+            tg_ui.ikb("◀️", tg_ui.PRIMARY, callback_data=f"cop_{page - 1}"),
+            tg_ui.ikb(f"صفحه {page + 1}/{pages}", tg_ui.PRIMARY,
+                      callback_data=f"cop_{page}"),
+            tg_ui.ikb("▶️", tg_ui.PRIMARY, callback_data=f"cop_{page + 1}"),
+        ])
     rows.append([tg_ui.ikb("🇮🇷 تأییدشده از ایران", tg_ui.SUCCESS,
                            callback_data="iran")])
     return InlineKeyboardMarkup(rows)
 
 
-@user_command
-async def cmd_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """`/country` فهرست کشورها، `/country DE` کانفیگ‌های آن کشور."""
-    if context.args:
-        await show_country(update, context.args[0])
-        return
+async def show_country_list(update: Update, page: int = 0) -> None:
+    """فهرست کشورها با صفحه‌بندی — هم برای `/country` و هم دکمه‌های صفحه."""
     counts = country_counts(load_configs())
     if not counts:
         await reply(update, "⚠️ فعلاً کانفیگی با برچسب کشور نداریم.")
         return
-    shown = list(counts.items())[:COUNTRY_BTN_ROWS * 3]
+    shown, page, pages = country_page(counts, page)
     lines = [
         "🌍 *انتخاب بر اساس کشور*",
         f"{len(counts)} کشور | {sum(counts.values())} کانفیگ برچسب‌دار",
@@ -821,9 +832,20 @@ async def cmd_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "",
         "👇 کشور را انتخاب کن — یا `/country DE` را بنویس.",
     ]
-    if len(counts) > len(shown):
-        lines.append(f"_… و {len(counts) - len(shown)} کشور دیگر._")
-    await reply(update, "\n".join(lines), reply_markup=country_keyboard(counts))
+    if pages > 1:
+        lines.append(f"_صفحه {page + 1} از {pages}._")
+    await reply(
+        update, "\n".join(lines), reply_markup=country_keyboard(counts, page)
+    )
+
+
+@user_command
+async def cmd_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """`/country` فهرست کشورها، `/country DE` کانفیگ‌های آن کشور."""
+    if context.args:
+        await show_country(update, context.args[0])
+        return
+    await show_country_list(update)
 
 
 async def show_country(update: Update, raw_code: str) -> None:
@@ -988,7 +1010,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /sub — لینک اشتراک\n"
         "🔹 /donate — اهدای کانفیگ به کانال 🎁\n"
         "🔹 /stats — آمار کامل pipeline\n"
-        "🔹 /keyboard — پنهان/نمایش دکمه‌های پایین صفحه ⌨️\n"
         "🔹 /whoami — شناسه و نقش من\n\n"
         "📌 *برچسب‌های روی هر کانفیگ:*\n"
         "`84ms` تأخیر واقعی تونل | `P0%` افت بسته | `J9ms` لرزش | "
@@ -1007,43 +1028,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(user.id if user else None):
         text += "\n\n" + admin_help()
-    await reply(update, text, reply_markup=markup_for(update, context))
-
-
-@user_command
-async def cmd_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پنهان/نمایش دکمه‌های پایین صفحه — یک دستور برای هر دو جهت.
-
-    هم دکمه‌ی «⌨️ پنهان کردن دکمه‌ها» به این‌جا می‌رسد و هم /keyboard. چون
-    بعد از پنهان شدن دکمه‌ای نمانده، متن پاسخ صریحاً راه برگشت را می‌گوید؛
-    وگرنه کاربر فکر می‌کند ربات را خراب کرده.
-
-    حالت در context.user_data می‌ماند (حافظه، نه دیسک): ذخیره‌ی ترجیح یعنی
-    نگه‌داشتن شناسه‌ی تلگرام کاربر روی دیسک، و این ربات جای دیگری هم آن را
-    ذخیره نمی‌کند (اهداها هش می‌شوند). با restart کیبورد برمی‌گردد.
-    """
-    hide = not keyboard_hidden(context)
-    if context.user_data is not None:
-        if hide:
-            context.user_data[KEYBOARD_HIDDEN] = True
-        else:
-            context.user_data.pop(KEYBOARD_HIDDEN, None)
-
-    user = update.effective_user
-    if hide:
-        await reply(
-            update,
-            "⌨️ دکمه‌ها پنهان شدند.\n"
-            "برای برگرداندنشان /keyboard را بزن (یا /start).\n"
-            "_همه‌ی امکانات با دستور هم کار می‌کنند — /help فهرست کامل است._",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-    await reply(
-        update,
-        "⌨️ دکمه‌ها برگشتند 👇",
-        reply_markup=keyboard_for(user.id if user else None),
-    )
+    await reply(update, text,
+                reply_markup=keyboard_for(user.id if user else None))
 
 
 def admin_help() -> str:
@@ -1082,7 +1068,6 @@ BUTTON_ROUTES: Dict[str, Callable] = {
     BTN_STATS: cmd_stats,
     BTN_QR: cmd_qr,
     BTN_HELP: cmd_help,
-    BTN_KEYBOARD: cmd_keyboard,
 }
 
 # دکمه‌های ادمین به هندلرهایی وصل می‌شوند که پایین‌تر تعریف شده‌اند، پس این
@@ -1137,12 +1122,9 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply(update, "🧪 برای تست یک کانفیگ: `/test <لینک>` (فقط ادمین)")
         return
 
-    # متن ناشناس: راهنمای کوتاه. اگر کاربر خودش کیبورد را پنهان کرده،
-    # «از دکمه‌های پایین استفاده کن» دروغ است — پس راه واقعی گفته می‌شود.
-    if keyboard_hidden(context):
-        await reply(update, "❓ /help فهرست دستورها را می‌دهد — "
-                            "یا /keyboard تا دکمه‌ها برگردند.")
-        return
+    # متن ناشناس: راهنمای کوتاه، همراه با کیبورد. اگر کاربر با آیکنِ تلگرام
+    # دکمه‌ها را بسته باشد، همین پاسخ برشان می‌گرداند — و /help هم گفته شده،
+    # پس کسی که دکمه نمی‌خواهد بی‌راه نمی‌ماند.
     await reply(update, "👇 از دکمه‌های پایین استفاده کن یا /help را بزن.",
                 reply_markup=keyboard_for(
                     update.effective_user.id if update.effective_user else None))
@@ -1344,8 +1326,12 @@ def _quality_report(configs: List[str]) -> List[str]:
 
     lines = [
         f"📦 {len(configs)} کانفیگ | 🇮🇷 {iran} تأییدشده از ایران",
-        f"💚 بدون افت بسته: {stable}/{len(losses) or '—'}"
-        + (f" | میانگین افت {avg(losses)}%" if losses else ""),
+        # «۰ از —» یعنی هیچ، ولی خوانده می‌شود «هیچ‌کدام سالم نیستند». وقتی
+        # چیزی اندازه‌گیری نشده، همان را بگو — قاعده‌ی بقیه‌ی خطوط هم همین است.
+        (
+            f"💚 بدون افت بسته: {stable}/{len(losses)}"
+            f" | میانگین افت {avg(losses)}%"
+        ) if losses else "💚 افت بسته: اندازه‌گیری نشد",
         f"📶 لرزش: میانگین {avg(jitters)}ms ({len(jitters)} اندازه‌گیری)"
         if jitters else "📶 لرزش: اندازه‌گیری نشد",
         f"⬇️ سرعت: میانگین {avg(speeds)} KB/s ({len(speeds)} اندازه‌گیری)"
@@ -1362,6 +1348,60 @@ def _quality_report(configs: List[str]) -> List[str]:
     return lines
 
 
+# کلیدی که فقط main() نسخه‌ی سنجه‌دار در summary می‌نویسد. بودن/نبودنش
+# می‌گوید فایل‌های خروجی با کدام نسخه ساخته شده‌اند — دقیق‌تر از حدس زدن.
+_QUALITY_MARK = "speed_measured"
+
+
+def _quality_gap(configs: List[str], stats: Dict) -> List[str]:
+    """اگر هیچ سنجه‌ای در پول نیست، *دلیلش* را بگو.
+
+    شکایت کاربر: «دکمه‌ی کیفیت پول اگر کار نکند بی‌فایده است.» گزارش خودش
+    درست کار می‌کرد؛ چیزی که ادمین می‌دید سه خطِ «اندازه‌گیری نشد» بود بی هیچ
+    توضیحی — و از آن نمی‌شد فهمید ربات خراب است یا داده. سنجه‌ها از برچسبِ
+    خودِ کانفیگ خوانده می‌شوند، پس خالی بودنشان یعنی *فایل خروجی* سنجه ندارد،
+    و دلیلش در stats.json هست. این تابع همان دلیل را با گام بعدی می‌نویسد.
+    """
+    if not configs or any(vless.get_loss_pct(c) >= 0 for c in configs):
+        return []
+
+    pipeline = (stats.get("pipeline") or {})
+    layer7 = pipeline.get("layer7_http") or {}
+    summary = pipeline.get("summary") or {}
+    lines = ["", "🔎 *چرا سنجه‌ای نیست*"]
+
+    if stats.get("skip_xray") or layer7.get("skipped"):
+        lines.append(
+            "لایه ۷ با SKIP_XRAY رد شده — افت/لرزش/سرعت فقط داخل تونل xray "
+            "اندازه‌گیری می‌شوند. برای داشتنشان SKIP_XRAY=0 و بعد /run."
+        )
+    elif not layer7:
+        lines.append(
+            "آخرین اجرا به لایه ۷ نرسید (لایه‌های قبل خالی شدند یا خطا خورد). "
+            "/health دلیل را می‌گوید، /run اجرای تازه می‌سازد."
+        )
+    elif summary and _QUALITY_MARK not in summary:
+        lines.append(
+            "این فایل‌ها *قبل از* اضافه شدن اندازه‌گیری پایداری ساخته شده‌اند، "
+            "پس برچسب سنجه ندارند. اولین /run بعدی درستش می‌کند."
+        )
+    elif not layer7.get("passed"):
+        lines.append(
+            f"لایه ۷ هیچ کانفیگی را تأیید نکرد (از {layer7.get('total', 0)} "
+            "ورودی)، پس این پول از ذخیره‌ی تست‌نشده پر شده."
+        )
+    else:
+        lines.append(
+            "لایه ۷ اجرا شده ولی برچسبی روی کانفیگ‌ها نیست — یعنی فایل‌های "
+            "کانفیگ و stats.json از یک اجرا نیستند. /run هم‌ترازشان می‌کند."
+        )
+
+    when = str(stats.get("timestamp", ""))[:16].replace("T", " ")
+    if when:
+        lines.append(f"🕐 داده‌ی این گزارش از اجرای {when} است.")
+    return lines
+
+
 @admin_only
 async def cmd_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کیفیت پول از دید سنجه‌های لایه ۷ — افت بسته، لرزش، سرعت، احیا.
@@ -1371,8 +1411,13 @@ async def cmd_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     شود، همان ادعای دروغِ «۰٪ افت» ساخته می‌شود که در کارت‌ها جلویش گرفته شد.
     """
     await refresh_cache()
+    configs = load_configs()
+    stats = load_stats()
     lines = ["📶 *کیفیت پول تأییدشده*", ""]
-    lines += _quality_report(load_configs())
+    lines += _quality_report(configs)
+    # پول خالی دلیلِ خودش را دارد («_پول خالی است._»)؛ تشخیصِ سنجه فقط وقتی
+    # معنی دارد که کانفیگ هست ولی برچسبی روی آن نیست.
+    lines += _quality_gap(configs, stats)
 
     reserve = load_pool_configs()
     lines += ["", f"🗃 *پول ذخیره (تست‌نشده)* — {len(reserve)} کانفیگ"]
@@ -1381,7 +1426,6 @@ async def cmd_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "این‌ها لایه ۶ را پاس کردند ولی به سقف زمانی لایه ۷ خوردند، پس "
             "سنجه‌ی پایداری ندارند و در کانال با برچسب «تست‌نشده» می‌روند."
         )
-    stats = load_stats()
     summary = (stats.get("pipeline") or {}).get("summary") or {}
     if isinstance(summary, dict) and summary:
         lines += [
@@ -1392,6 +1436,15 @@ async def cmd_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚡ میانگین سرعت: {summary.get('avg_speed_kbps', 0)} KB/s | "
             f"♻️ احیا: {summary.get('revived', 0)}",
         ]
+        # چرخشِ نوبتِ لایه ۷ — تنها عددِ قابل‌اندازه‌گیری در پاسخ به «ربات دیگر
+        # کانفیگ تازه پیدا نمی‌کند». اگر کلید نباشد (اجرای SKIP_XRAY یا خروجیِ
+        # قبل از این نسخه) خطی نوشته نمی‌شود: «۰ کانفیگِ تازه» یک ادعای
+        # اندازه‌گیری‌شده است و بی‌اندازه‌گیری نوشتنش همان دروغِ همیشگی.
+        if "fresh_tested" in summary or "new_passed" in summary:
+            lines.append(
+                f"🆕 اولین‌بار از تونل آزموده شد: {summary.get('fresh_tested', 0)}"
+                f" | تازه تأیید شد: {summary.get('new_passed', 0)}"
+            )
     await reply(update, "\n".join(lines))
 
 
@@ -1831,6 +1884,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "countries":
         await cmd_country(update, context)
 
+    elif data.startswith("cop_"):
+        # صفحه‌ی بعدی/قبلی فهرست کشور. پیشوند جدا از `co_` است تا کد کشور و
+        # شماره‌ی صفحه با هم قاطی نشوند.
+        try:
+            page = int(data[4:])
+        except ValueError:
+            page = 0
+        await show_country_list(update, page)
+
     elif data.startswith("co_"):
         await show_country(update, data[3:])
 
@@ -1909,7 +1971,6 @@ USER_COMMANDS = [
     ("donate", "اهدای کانفیگ", cmd_donate),
     ("stats", "آمار pipeline", cmd_stats),
     ("whoami", "شناسه و نقش من", cmd_whoami),
-    ("keyboard", "پنهان/نمایش دکمه‌ها", cmd_keyboard),
     ("help", "راهنما", cmd_help),
 ]
 

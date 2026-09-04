@@ -231,11 +231,9 @@ def test_loop_skips_the_tick_while_bot_is_off(isolated, monkeypatch):
 # ─── تفکیک نقش ────────────────────────────────────────────
 
 def test_only_admin_gets_the_admin_rows(isolated):
-    user_rows = len(bot.MAIN_KEYBOARD.keyboard)
     assert bot.keyboard_for(USER) is bot.MAIN_KEYBOARD
     assert bot.keyboard_for(None) is bot.MAIN_KEYBOARD
     assert bot.keyboard_for(ADMIN) is bot.ADMIN_KEYBOARD
-    assert len(bot.ADMIN_KEYBOARD.keyboard) > user_rows
 
     admin_texts = {
         b.text for row in bot.ADMIN_KEYBOARD.keyboard for b in row
@@ -243,6 +241,11 @@ def test_only_admin_gets_the_admin_rows(isolated):
     user_texts = {b.text for row in bot.MAIN_KEYBOARD.keyboard for b in row}
     assert bot.BTN_A_PUBLISH in admin_texts
     assert bot.BTN_A_PUBLISH not in user_texts
+    # خواسته‌ی کاربر: «دکمه‌های مخصوص کاربر نباید برای ادمین دیده شوند.» پس
+    # کیبورد ادمین جمعِ دو تا نیست، دو مجموعه‌ی جدا هستند. (قبلاً این تست
+    # می‌گفت ردیف‌های ادمین *بیشتر* است — همان جمع بودن که کاربر نمی‌خواست.)
+    assert not (admin_texts & user_texts)
+    assert bot.BTN_BEST in user_texts and bot.BTN_BEST not in admin_texts
 
 
 def test_admin_button_text_from_a_normal_user_is_refused(isolated, monkeypatch):

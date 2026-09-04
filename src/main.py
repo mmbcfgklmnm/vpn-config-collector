@@ -49,7 +49,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import clean_ip, outputs, vless
 from src.config import (
-    CF_CLEAN_IP_ENABLED, CONFIGS_DIR, MAX_HTTP_TEST, POOL_MAX,
+    CF_CLEAN_IP_ENABLED, CONFIGS_DIR, LAYER7_LOG_FILE, MAX_HTTP_TEST, POOL_MAX,
     PUBLISH_AFTER_COLLECT, SKIP_TELEGRAM, SKIP_XRAY, STATS_FILE,
 )
 from src.logger import get_logger
@@ -57,6 +57,7 @@ from src.publisher.publisher import Publisher
 from src.scraper.github_scraper import scrape_github
 from src.scraper.telegram_scraper import scrape_telegram
 from src.scraper.web_scraper import scrape_web
+from src.tester import ledger
 from src.tester.checkhost_tester import check_iran_batch, iran_latency
 from src.tester.deduplicator import deduplicate
 from src.tester.format_validator import filter_by_format
@@ -278,12 +279,13 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         }
         final = [tag(c, tls_ms_map.get(c) or tcp_ms_map.get(c, 0)) for c in configs]
     else:
-        # xray سنگین‌ترین لایه است؛ سریع‌ترین‌ها تا سقف MAX_HTTP_TEST تست
-        # می‌شوند. کانفیگ تست‌نشده publish نمی‌شود: لایه‌های ۳ و ۵ فقط
-        # می‌گویند «چیزی روی این پورت جواب می‌دهد»، لایه ۷ می‌گوید
-        # «تونل VLESS واقعاً کار می‌کند».
-        # تأییدشده‌های ایران اول: اگر سقف بخورد، کانفیگی که از ایران جواب
-        # داده نباید جای خود را به یک سرورِ سریعِ بسته بدهد.
+        # xray سنگین‌ترین لایه است؛ ورودی‌اش هم با سقفِ تعداد (MAX_HTTP_TEST) و
+        # هم با بودجه‌ی زمانی بریده می‌شود. کانفیگ تست‌نشده publish نمی‌شود:
+        # لایه‌های ۳ و ۵ فقط می‌گویند «چیزی روی این پورت جواب می‌دهد»، لایه ۷
+        # می‌گوید «تونل VLESS واقعاً کار می‌کند».
+        # ترتیبِ ارزش: تأییدشده‌های ایران اول، بعد سریع‌ترین TLS — اگر سقف
+        # بخورد، کانفیگی که از ایران جواب داده نباید جای خود را به یک سرورِ
+        # سریعِ بسته بدهد.
         ordered = sorted(
             configs,
             key=lambda c: (
@@ -291,31 +293,59 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
                 tls_ms_map.get(c, float("inf")),
             ),
         )
-        candidates = ordered[:MAX_HTTP_TEST]
-        not_tested = len(ordered) - len(candidates)
-        if not_tested:
+        # ...ولی ترتیبِ ارزش به‌تنهایی یعنی همان سریع‌ترین‌ها هر نیم‌ساعت
+        # آزموده می‌شوند و کشفِ تازه هیچ‌وقت به تونل نمی‌رسد — دقیقاً شکایت
+        # کاربر. دفتر نوبت سهمِ تضمینی به آزموده‌نشده‌ها می‌دهد و صف را
+        # درهم می‌بافد تا بودجه هرجا قطع شود نسبت حفظ شده باشد.
+        log = ledger.load(LAYER7_LOG_FILE)
+        turn = ledger.plan(ordered, log, MAX_HTTP_TEST)
+        candidates = turn.queue
+        not_tested = len(turn.spare)
+        logger.info(
+            f"7️⃣  صفِ تونل: {len(candidates)} کانفیگ "
+            f"({turn.fresh_queued} برای اولین بار، "
+            f"{turn.proven_queued} تأییدشده‌ی اجرای قبل) | اجرا #{log.run}"
+        )
+        if not_tested or turn.held:
             logger.warning(
-                f"7️⃣  تست تونل روی {len(candidates)} کانفیگ سریع‌تر — "
-                f"{not_tested} تا به سقف MAX_HTTP_TEST خوردند و publish نمیشن"
+                f"   {not_tested} کانفیگ به سقف/بودجه خوردند و به پول ذخیره "
+                f"می‌روند؛ {turn.held} تا هم اجرای قبل ردشان کرد و نوبت "
+                "فرصت دوباره‌شان نرسیده (نه در صف، نه در ذخیره)"
             )
-        else:
-            logger.info("7️⃣  تأخیر واقعی + پایداری + سرعت (چند دور)...")
 
         configs_ms, s7 = await http_test_batch(candidates)
         # سنجه‌ها از stats بیرون کشیده می‌شوند تا در stats.json تکرار نشوند؛
         # جای واقعیِ آن‌ها برچسب خودِ کانفیگ است.
         quality.update(s7.pop("_quality", {}))
-        s7["not_tested"] = not_tested
+        # کانفیگ‌هایی که به بودجه‌ی زمانی لایه ۷ خوردند و نوبتشان نرسید.
+        budget_skipped = s7.pop("_skipped", [])
+        s7["not_tested"] = not_tested + len(budget_skipped)
         stats["layer7_http"] = s7
+
+        # ثبت در دفتر: فقط چیزی که *واقعاً* آزموده شد. بی‌نوبت‌مانده‌ها ثبت
+        # نمی‌شوند، وگرنه اجرای بعدی آن‌ها را «آزموده» می‌بیند و همان حلقه‌ی
+        # تکرار از نو ساخته می‌شود.
+        waiting = set(budget_skipped)
+        s7["rotation"] = log.record(
+            [c for c in candidates if c not in waiting],
+            {c for c, _ in configs_ms},
+        )
+        s7["rotation"]["held_after_fail"] = turn.held
+        s7["rotation"]["run"] = log.run
+        # نوشتنِ دفتر مثل بقیه‌ی خروجی‌ها کارِ main() است؛ pipeline فقط حساب
+        # می‌کند. همان الگوی _reserve.
+        stats["_layer7_log"] = log
+
         logger.info(f"   → {len(configs_ms)}\n")
         final = [tag(c, ms) for c, ms in configs_ms]
         # ذخیره فقط از *تست‌نشده‌ها* پر می‌شود، نه از رد‌شده‌های لایه ۷.
         # قاعده‌ی همیشگی پروژه: «تست نشد» ≠ «رد شد». کانفیگی که xray واقعاً
         # امتحان کرد و کار نکرد، حق ورود به کانال ندارد؛ کانفیگی که فقط به
         # سقف زمان خورد، هنوز بهترین گزینه‌ی موجود برای پر کردن سهمیه است.
+        # بی‌نوبت‌های بودجه اول می‌آیند: آن‌ها سریع‌ترین‌های صف بودند.
         reserve = [
             tag(c, tls_ms_map.get(c) or tcp_ms_map.get(c, 0.0))
-            for c in ordered[MAX_HTTP_TEST:]
+            for c in budget_skipped + turn.spare
         ]
 
     reserve = reserve[:POOL_MAX]
@@ -333,6 +363,11 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
     counts.append(len(final))
     iran_verified = sum(1 for c in final if vless.is_iran_verified(c))
     speeds = [s for s in (vless.get_speed_kbps(c) for c in final) if s > 0]
+    # چرخشِ نوبت لایه ۷ در آمار هم می‌آید: «این اجرا چند کانفیگ را برای اولین
+    # بار آزمود و چند تای تازه تأیید شد» تنها پاسخِ قابل‌اندازه‌گیری به شکایتِ
+    # «ربات دیگر کانفیگ تازه پیدا نمی‌کند» است. SKIP_XRAY کلیدی ندارد و صفر
+    # می‌ماند — «اندازه‌گیری نشد» با «صفرِ اندازه‌گیری‌شده» قاطی نمی‌شود.
+    rotation = (stats.get("layer7_http") or {}).get("rotation") or {}
     stats["summary"] = {
         "funnel": counts,
         "final": len(final),
@@ -342,6 +377,8 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
         "stable": sum(1 for c in final if vless.is_stable(c)),
         "speed_measured": len(speeds),
         "avg_speed_kbps": round(sum(speeds) / len(speeds), 1) if speeds else 0.0,
+        "fresh_tested": rotation.get("first_time", 0),
+        "new_passed": rotation.get("new_passed", 0),
     }
     # کانال پشتیِ برگرداندن ذخیره بدون شکستن قرارداد دوعضوی این تابع.
     # main() فوراً pop می‌کند تا در stats.json ننشیند (چند صد لینک VLESS
@@ -361,8 +398,14 @@ async def pipeline(configs: List[str]) -> Tuple[List[str], Dict]:
             f"\n   ♻️  احیاشده با IP تمیز: {stats['summary']['revived']}"
             if stats["summary"]["revived"] else ""
         )
-        + f"\n   🗃️  پول ذخیره (تست‌نشده): {len(reserve)}\n"
-        f"{'=' * 55}"
+        + f"\n   🗃️  پول ذخیره (تست‌نشده): {len(reserve)}"
+        + (
+            f"\n   🆕 اولین‌بار آزموده شد: {rotation.get('first_time', 0)}"
+            f" | تازه تأیید شد: {rotation.get('new_passed', 0)}"
+            f" | برگشته: {rotation.get('recovered', 0)}"
+            if rotation else ""
+        )
+        + f"\n{'=' * 55}"
     )
     return final, stats
 
@@ -387,6 +430,13 @@ async def main() -> None:
         valid, pipe_stats = await pipeline(raw)
         # ذخیره از آمار جدا می‌شود تا فایل stats.json فهرست لینک نشود.
         reserve = list(pipe_stats.pop("_reserve", []))
+        # دفترِ نوبتِ لایه ۷ (اگر آن لایه اجرا شده باشد). همین‌جا نوشته می‌شود
+        # نه بعد از خروجی‌ها: آزمونِ تونل واقعاً انجام شده و حافظه باید همان
+        # را بگوید حتی اگر نوشتن فایل‌ها بعداً خطا بدهد. pop لازم است چون
+        # آبجکت است و json.dump رویش می‌شکند.
+        turn_log = pipe_stats.pop("_layer7_log", None)
+        if turn_log is not None:
+            ledger.save(turn_log, LAYER7_LOG_FILE)
         # خروجی‌ها فقط وقتی چیزی هست نوشته میشن؛ وگرنه فایل قبلی می‌ماند تا
         # لینک subscription کاربران با یک اجرای ناموفق از کار نیفتد.
         written = outputs.write_all(

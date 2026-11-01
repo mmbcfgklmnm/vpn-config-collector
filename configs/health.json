@@ -1,34 +1,34 @@
 {
-  "updated_at": "2026-10-29T16:18:42+00:00",
+  "updated_at": "2026-11-01T09:36:50+00:00",
   "by_kind": {
     "web": {
       "sources": 26,
       "ok": 23,
       "dead": 3,
-      "configs": 16609
+      "configs": 16139
     },
     "github": {
       "sources": 14,
-      "ok": 10,
-      "dead": 4,
-      "configs": 13834
+      "ok": 11,
+      "dead": 3,
+      "configs": 15239
     },
     "telegram": {
       "sources": 29,
       "ok": 29,
       "dead": 0,
-      "configs": 4402
+      "configs": 4423
     }
   },
   "dead_sources": [
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
+      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt",
       "error": "HTTP 404"
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt",
+      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
       "error": "HTTP 404"
     },
     {
@@ -43,17 +43,12 @@
     },
     {
       "kind": "github",
-      "name": "mheidari98/.proxy",
+      "name": "Kolandone/v2raycollector",
       "error": "صفر کانفیگ"
     },
     {
       "kind": "github",
       "name": "Leon406/SubCrawler",
-      "error": "صفر کانفیگ"
-    },
-    {
-      "kind": "github",
-      "name": "Kolandone/v2raycollector",
       "error": "صفر کانفیگ"
     }
   ],
@@ -61,7 +56,7 @@
     {
       "kind": "github",
       "name": "MhdiTaheri/V2rayCollector",
-      "count": 2652
+      "count": 2648
     },
     {
       "kind": "github",
@@ -70,22 +65,12 @@
     },
     {
       "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
+      "name": "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",
       "count": 2000
     },
     {
       "kind": "web",
       "name": "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/python/vless",
-      "count": 2000
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/mheidari98/.proxy/main/vless",
-      "count": 2000
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",
       "count": 2000
     },
     {
@@ -99,8 +84,18 @@
       "count": 2000
     },
     {
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
+      "count": 2000
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/mheidari98/.proxy/main/vless",
+      "count": 2000
+    },
+    {
       "kind": "github",
-      "name": "0xRadikal/Free-v2ray-Configs",
+      "name": "mheidari98/.proxy",
       "count": 2000
     },
     {
@@ -112,64 +107,15 @@
   "sources": [
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
-      "count": 0,
-      "ok": false,
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
-      "count": 65,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1",
-      "count": 18,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt",
-      "count": 0,
-      "ok": false,
-      "error": "HTTP 404"
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
-      "count": 291,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/vless.txt",
-      "count": 65,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
       "name": "https://raw.githubusercontent.com/liketolivefree/kobabi/main/sub.txt",
-      "count": 425,
+      "count": 209,
       "ok": true,
       "error": ""
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-      "count": 2,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/vless",
-      "count": 663,
+      "name": "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",
+      "count": 2000,
       "ok": true,
       "error": ""
     },
@@ -182,29 +128,43 @@
     },
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt",
+      "count": 0,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector_Py/main/sub/Mix/mix.txt",
-      "count": 402,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/AzadNetCH/Clash/main/AzadNet.txt",
-      "count": 588,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Rayan-Config/C-Sub/refs/heads/main/configs/proxy.txt",
-      "count": 31,
+      "count": 398,
       "ok": true,
       "error": ""
     },
     {
       "kind": "web",
       "name": "https://raw.githubusercontent.com/Ashkan-m/v2ray/main/Sub.txt",
-      "count": 5,
+      "count": 15,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
+      "count": 0,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/vless.txt",
+      "count": 65,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt",
+      "count": 69,
       "ok": true,
       "error": ""
     },
@@ -217,20 +177,6 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/Everyday-VPN/Everyday-VPN/main/subscription/main.txt",
-      "count": 2,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/mahsanet/MahsaFreeConfig/main/mtn/sub_1.txt",
-      "count": 4,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
       "name": "https://raw.githubusercontent.com/Kolandone/v2raycollector/main/vless.txt",
       "count": 0,
       "ok": false,
@@ -238,22 +184,22 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/server.txt",
-      "count": 576,
+      "name": "https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/vless",
+      "count": 662,
       "ok": true,
       "error": ""
     },
     {
-      "kind": "github",
-      "name": "Epodonios/v2ray-configs",
-      "count": 0,
-      "ok": false,
-      "error": "هیچ فایل کاندیدی پیدا نشد"
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+      "count": 34,
+      "ok": true,
+      "error": ""
     },
     {
       "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
-      "count": 2000,
+      "name": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+      "count": 4,
       "ok": true,
       "error": ""
     },
@@ -266,22 +212,8 @@
     },
     {
       "kind": "web",
-      "name": "https://raw.githubusercontent.com/mheidari98/.proxy/main/vless",
-      "count": 2000,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",
-      "count": 2000,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "web",
-      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
-      "count": 1086,
+      "name": "https://raw.githubusercontent.com/Rayan-Config/C-Sub/refs/heads/main/configs/proxy.txt",
+      "count": 31,
       "ok": true,
       "error": ""
     },
@@ -294,28 +226,77 @@
     },
     {
       "kind": "web",
+      "name": "https://raw.githubusercontent.com/AzadNetCH/Clash/main/AzadNet.txt",
+      "count": 588,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/server.txt",
+      "count": 523,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/Everyday-VPN/Everyday-VPN/main/subscription/main.txt",
+      "count": 2,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1",
+      "count": 18,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/mahsanet/MahsaFreeConfig/main/mtn/sub_1.txt",
+      "count": 3,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "github",
+      "name": "Epodonios/v2ray-configs",
+      "count": 0,
+      "ok": false,
+      "error": "هیچ فایل کاندیدی پیدا نشد"
+    },
+    {
+      "kind": "web",
       "name": "https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/Splitted-By-Protocol/vless.txt",
       "count": 2000,
       "ok": true,
       "error": ""
     },
     {
-      "kind": "github",
-      "name": "mheidari98/.proxy",
-      "count": 0,
-      "ok": false,
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/protocols/vless.txt",
+      "count": 2000,
+      "ok": true,
       "error": ""
     },
     {
-      "kind": "github",
-      "name": "0xRadikal/Free-v2ray-Configs",
+      "kind": "web",
+      "name": "https://cdn.jsdelivr.net/gh/0xRadikal/Free-v2ray-Configs@main/light/configs.txt",
+      "count": 1132,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "web",
+      "name": "https://raw.githubusercontent.com/mheidari98/.proxy/main/vless",
       "count": 2000,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
-      "name": "Leon406/SubCrawler",
+      "name": "Kolandone/v2raycollector",
       "count": 0,
       "ok": false,
       "error": ""
@@ -330,7 +311,14 @@
     {
       "kind": "github",
       "name": "MhdiTaheri/V2rayCollector",
-      "count": 2652,
+      "count": 2648,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "github",
+      "name": "mheidari98/.proxy",
+      "count": 2000,
       "ok": true,
       "error": ""
     },
@@ -343,15 +331,15 @@
     },
     {
       "kind": "github",
-      "name": "Kolandone/v2raycollector",
+      "name": "Leon406/SubCrawler",
       "count": 0,
       "ok": false,
       "error": ""
     },
     {
       "kind": "github",
-      "name": "ALIILAPRO/v2rayNG-Config",
-      "count": 1152,
+      "name": "0xRadikal/Free-v2ray-Configs",
+      "count": 2000,
       "ok": true,
       "error": ""
     },
@@ -364,15 +352,22 @@
     },
     {
       "kind": "telegram",
-      "name": "v2ray1_ng",
-      "count": 263,
+      "name": "proxy_mtm",
+      "count": 224,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
-      "name": "proxy_mtm",
-      "count": 232,
+      "name": "v2rayNG_Matsuri",
+      "count": 139,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "v2ray1_ng",
+      "count": 285,
       "ok": true,
       "error": ""
     },
@@ -384,51 +379,44 @@
       "error": ""
     },
     {
-      "kind": "telegram",
-      "name": "prrofile_purple",
-      "count": 473,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "telegram",
-      "name": "v2rayNG_Matsuri",
-      "count": 154,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "telegram",
-      "name": "Outline_Vpn",
-      "count": 659,
+      "kind": "github",
+      "name": "ALIILAPRO/v2rayNG-Config",
+      "count": 1046,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
       "name": "roosterkid/openproxylist",
-      "count": 195,
+      "count": 207,
       "ok": true,
       "error": ""
     },
     {
-      "kind": "github",
-      "name": "Surfboardv2ray/TGParse",
-      "count": 2000,
+      "kind": "telegram",
+      "name": "Outline_Vpn",
+      "count": 668,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "prrofile_purple",
+      "count": 480,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
       "name": "Pawdroid/Free-servers",
-      "count": 288,
+      "count": 305,
       "ok": true,
       "error": ""
     },
     {
       "kind": "github",
       "name": "ermaozi/get_subscribe",
-      "count": 582,
+      "count": 68,
       "ok": true,
       "error": ""
     },
@@ -440,37 +428,44 @@
       "error": ""
     },
     {
-      "kind": "telegram",
-      "name": "oneclickvpnkeys",
-      "count": 269,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "telegram",
-      "name": "vpn_tehran",
-      "count": 217,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "telegram",
-      "name": "FreakConfig",
-      "count": 76,
-      "ok": true,
-      "error": ""
-    },
-    {
-      "kind": "telegram",
-      "name": "V2rayCollector",
-      "count": 224,
+      "kind": "github",
+      "name": "Surfboardv2ray/TGParse",
+      "count": 2000,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
       "name": "nofiltering2",
-      "count": 211,
+      "count": 213,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "oneclickvpnkeys",
+      "count": 266,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "FreakConfig",
+      "count": 60,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "V2rayCollector",
+      "count": 232,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "kind": "telegram",
+      "name": "vpn_tehran",
+      "count": 219,
       "ok": true,
       "error": ""
     },
@@ -484,28 +479,28 @@
     {
       "kind": "telegram",
       "name": "v2ray_free_conf",
-      "count": 66,
+      "count": 72,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
       "name": "DirectVPN",
-      "count": 92,
+      "count": 94,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
       "name": "PrivateVPNs",
-      "count": 92,
+      "count": 94,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
       "name": "vlessconfig",
-      "count": 92,
+      "count": 94,
       "ok": true,
       "error": ""
     },
@@ -519,14 +514,14 @@
     {
       "kind": "telegram",
       "name": "v2raying",
-      "count": 173,
+      "count": 185,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
       "name": "ConfigsHUB",
-      "count": 54,
+      "count": 44,
       "ok": true,
       "error": ""
     },
@@ -546,15 +541,15 @@
     },
     {
       "kind": "telegram",
-      "name": "vpn_ocean",
-      "count": 10,
+      "name": "v2ray_configs",
+      "count": 63,
       "ok": true,
       "error": ""
     },
     {
       "kind": "telegram",
-      "name": "v2ray_configs",
-      "count": 63,
+      "name": "vpn_ocean",
+      "count": 10,
       "ok": true,
       "error": ""
     },
@@ -568,7 +563,7 @@
     {
       "kind": "telegram",
       "name": "VmessProtocol",
-      "count": 28,
+      "count": 27,
       "ok": true,
       "error": ""
     },
